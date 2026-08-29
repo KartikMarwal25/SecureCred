@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+.git
+.env
+.env.*
+!.env.example
+contracts/cache
+contracts/artifacts
+contracts/typechain-types
+apps/web/dist
+db/data
+docker/pgdata
+*.log

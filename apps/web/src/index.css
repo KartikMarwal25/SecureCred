@@ -1,0 +1,114 @@
+@import 'tailwindcss';
+
+/*
+ * SecureCred design tokens (UI/UX Design Document v1.1).
+ * Single source of truth: raw values live here as CSS custom properties,
+ * and are mapped into Tailwind's theme below so every utility class
+ * (bg-ink, text-brand, border-edge-ctl, ...) resolves back to one of these.
+ * No component may use a hex value that isn't defined here.
+ */
+:root {
+  --ink: #15315b;
+  --brand: #1f4e79;
+  --body: #233348;
+  --muted: #5a6b80;
+  --faint: #5f7084;
+  --edge-ctl: #78899e;
+  --edge: #c8d3e0;
+  --accent: #6ee7b7;
+  --surface: #f5f8fc;
+  --zebra: #edf2f8;
+  --paper: #ffffff;
+
+  --ok: #2e6b3c;
+  --ok-bg: #dff0e2;
+  --warn: #8a6420;
+  --warn-bg: #f5e9cf;
+  --bad: #8e3a3f;
+  --bad-bg: #f5dfe0;
+  --neutral: #4a5768;
+  --neutral-bg: #e7eaee;
+
+  /* The one shadow level permitted in the whole product, used only on the
+     revoke confirmation dialog. Derived from --ink, never a bare hex. */
+  --shadow-dialog: 0 12px 32px rgba(21, 49, 91, 0.28);
+
+  /* Overlay scrim behind the one modal dialog in the product, derived from --ink. */
+  --scrim: rgba(21, 49, 91, 0.4);
+}
+
+@theme {
+  --color-ink: var(--ink);
+  --color-brand: var(--brand);
+  --color-body: var(--body);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-edge-ctl: var(--edge-ctl);
+  --color-edge: var(--edge);
+  --color-accent: var(--accent);
+  --color-surface: var(--surface);
+  --color-zebra: var(--zebra);
+  --color-paper: var(--paper);
+
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  --color-neutral: var(--neutral);
+  --color-neutral-bg: var(--neutral-bg);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Exact breakpoints from the design spec (Tailwind v4's default `sm` is 640px). */
+  --breakpoint-sm: 480px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+
+  --radius-control: 4px;
+  --radius-card: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--paper);
+  color: var(--body);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  overflow-x: hidden;
+}
+
+/* No layout may scroll horizontally; wide content scrolls inside its own container. */
+#root {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Prose containers cap body copy at roughly 72 characters. */
+.prose-copy {
+  max-width: 72ch;
+}
+
+/* Visible keyboard focus ring using the brand token, everywhere. */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
