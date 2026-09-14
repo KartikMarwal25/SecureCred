@@ -21,6 +21,25 @@ const csvList = (value) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+/**
+ * A correct string-to-boolean env parser, for env vars where `z.coerce.
+ * boolean()` is a real bug, not just imprecise: `z.coerce.boolean()` runs
+ * JS's own `Boolean(value)` coercion, and `Boolean("false")` is `true` —
+ * any non-empty string is truthy. Confirmed directly: `DATABASE_SSL=false`
+ * in `.env` was silently resolving to `config.databaseSsl === true`, the
+ * exact opposite of the value actually set, because "false" is itself a
+ * non-empty string. `booleanEnv` treats only "true"/"1" as true and
+ * everything else (including "false"/"0"/unset-but-required) as false;
+ * `defaultValue` is used only when the variable is absent entirely.
+ *
+ * @param {boolean} defaultValue - Used when the env var isn't set at all.
+ */
+const booleanEnv = (defaultValue) =>
+  z
+    .string()
+    .optional()
+    .transform((value) => (value === undefined ? defaultValue : value === 'true' || value === '1'));
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -36,8 +55,8 @@ const envSchema = z.object({
   // unless a specific managed provider's cert isn't in Node's default trust
   // store, in which case an operator sets it to false deliberately — never
   // as this schema's own default.
-  DATABASE_SSL: z.coerce.boolean().default(false),
-  DATABASE_SSL_REJECT_UNAUTHORIZED: z.coerce.boolean().default(true),
+  DATABASE_SSL: booleanEnv(false),
+  DATABASE_SSL_REJECT_UNAUTHORIZED: booleanEnv(true),
 
   CLERK_PUBLISHABLE_KEY: z.string().default(''),
   CLERK_SECRET_KEY: z.string().default(''),

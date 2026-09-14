@@ -10,6 +10,7 @@ import { ROLE, ERROR_CODE, joinRequestIdParamSchema } from '@securecred/shared';
 import { requireRole } from '../middleware/rbac.mw.js';
 import { validate } from '../middleware/validate.mw.js';
 import { AppError } from '../lib/errors.js';
+import { getGasStatusSummary } from '../lib/gasStatus.js';
 
 /**
  * Builds the `/api/v1/institutions` router.
@@ -20,6 +21,7 @@ import { AppError } from '../lib/errors.js';
  * @param {object} deps.institutionJoinRequestRepo
  * @param {object} deps.userRepo
  * @param {object} deps.auditRepo
+ * @param {object} deps.chainAdapter
  * @param {import('express').RequestHandler} deps.requireAuth
  * @returns {import('express').Router}
  */
@@ -29,6 +31,7 @@ export const createInstitutionsRouter = ({
   institutionJoinRequestRepo,
   userRepo,
   auditRepo,
+  chainAdapter,
   requireAuth,
 }) => {
   const router = Router();
@@ -60,6 +63,22 @@ export const createInstitutionsRouter = ({
         institutionName: institution.institution_name,
         institutionCode: institution.institution_code,
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // The custodian wallet is shared across every institution (one backend-
+  // held signer anchors everyone's certificates — see custodianSigner.js),
+  // so this isn't institution-specific data; it's exposed here because
+  // "can I issue certificates right now" is exactly what an institution
+  // admin needs to know, and the platform's own gas reserve is what that
+  // depends on. Never exposes the private key or wallet address's full
+  // transaction history — balance and a status label only.
+  router.get('/me/gas-status', requireAuth, requireRole(ROLE.INSTITUTION), async (req, res, next) => {
+    try {
+      const balanceWei = await chainAdapter.getCustodianBalance();
+      res.status(200).json({ status: 'ok', ...getGasStatusSummary(balanceWei) });
     } catch (err) {
       next(err);
     }

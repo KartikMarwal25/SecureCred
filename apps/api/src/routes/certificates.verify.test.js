@@ -29,6 +29,7 @@ const makeFakeContainer = (verifyResult, overrides = {}) => ({
   revocationLimiter: passThrough,
   verifyMinuteLimiter: passThrough,
   verifyHourLimiter: passThrough,
+  authLimiter: passThrough,
   ...overrides,
 });
 

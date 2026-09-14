@@ -174,36 +174,112 @@ describe('issuanceService.issue (pipeline orchestration, substitute dependencies
     expect(deps.certificateRepo.insertPending).toHaveBeenCalledTimes(2);
   });
 
-  it('on a storage (Pinata) failure, transitions straight to FAILED and never calls the chain', async () => {
-    const pinErr = new Error('Pinata down');
-    const { deps, transitions } = makeDeps({ pinataAdapter: { pin: jest.fn().mockRejectedValue(pinErr) } });
-    const service = createIssuanceService(deps);
+  describe('transient external-dependency failures (Pinata/RPC down) — retried, never immediately fatal', () => {
+    // These retries run through the same setTimeout-based backoff verified
+    // in lib/retry.test.js — fake timers here just avoid the real delay,
+    // not re-verify the timing itself.
+    const withFakeTimers = async (fn) => {
+      jest.useFakeTimers();
+      try {
+        const promise = fn();
+        // Attached immediately so a rejection settling mid-runAllTimersAsync
+        // is never briefly "unhandled" — the real outcome is still awaited
+        // (and can still reject) below; this no-op only marks it handled.
+        promise.catch(() => {});
+        await jest.runAllTimersAsync();
+        return await promise;
+      } finally {
+        jest.useRealTimers();
+      }
+    };
 
-    await expect(service.issue(baseInput(), actor)).rejects.toThrow('Pinata down');
+    it('retries a transient pin failure and succeeds without ever failing the certificate', async () => {
+      const pin = jest.fn().mockRejectedValueOnce(new Error('Pinata down')).mockResolvedValueOnce({ cid: 'devcid-abc123' });
+      const { deps } = makeDeps({ pinataAdapter: { pin } });
+      const service = createIssuanceService(deps);
 
-    expect(deps.chainAdapter.anchor).not.toHaveBeenCalled();
-    expect(transitions).toEqual([
-      {
-        certificateId: 'cert-1',
-        from: CERT_STATE.PENDING_STORAGE,
-        to: CERT_STATE.FAILED,
-        ctx: { actorUserId: 'user-1', extra: { failure_cause: 'Pinata down' } },
-      },
-    ]);
-  });
+      const result = await withFakeTimers(() => service.issue(baseInput(), actor));
 
-  it('on a chain anchor failure, transitions PENDING_ANCHOR straight to FAILED', async () => {
-    const chainErr = new Error('RPC unavailable');
-    const { deps, transitions } = makeDeps({ chainAdapter: { anchor: jest.fn().mockRejectedValue(chainErr) } });
-    const service = createIssuanceService(deps);
+      expect(pin).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(CERT_STATE.ANCHORING);
+    });
 
-    await expect(service.issue(baseInput(), actor)).rejects.toThrow('RPC unavailable');
+    it('a pin failure that outlasts every retry leaves the certificate at PENDING_STORAGE (never FAILED) and reports where to keep tracking it', async () => {
+      const pinErr = new Error('Pinata down');
+      const { deps, transitions } = makeDeps({ pinataAdapter: { pin: jest.fn().mockRejectedValue(pinErr) } });
+      const service = createIssuanceService(deps);
 
-    expect(deps.txRepo.insert).not.toHaveBeenCalled();
-    expect(transitions.map((t) => `${t.from}->${t.to}`)).toEqual([
-      `${CERT_STATE.PENDING_STORAGE}->${CERT_STATE.PENDING_ANCHOR}`,
-      `${CERT_STATE.PENDING_ANCHOR}->${CERT_STATE.FAILED}`,
-    ]);
+      await expect(withFakeTimers(() => service.issue(baseInput(), actor))).rejects.toMatchObject({
+        code: ERROR_CODE.E_PINATA_FAILED,
+        publicMeta: { certificateId: 'cert-1', certificateNumber: 'SKIT-2026-ABCDEFGHJKMN' },
+      });
+
+      expect(deps.pinataAdapter.pin).toHaveBeenCalledTimes(3);
+      expect(deps.chainAdapter.anchor).not.toHaveBeenCalled();
+      // No transition to FAILED — the certificate is left exactly where it
+      // was (PENDING_STORAGE, from insertPending) for the reconciler.
+      expect(transitions).toEqual([]);
+    });
+
+    it('retries a transient anchor failure and succeeds without ever failing the certificate', async () => {
+      const anchor = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('RPC unavailable'))
+        .mockResolvedValueOnce({ txHash: '0xTXHASH', nonce: 1 });
+      const { deps } = makeDeps({ chainAdapter: { anchor, check: jest.fn() } });
+      const service = createIssuanceService(deps);
+
+      const result = await withFakeTimers(() => service.issue(baseInput(), actor));
+
+      expect(anchor).toHaveBeenCalledTimes(2);
+      expect(deps.chainAdapter.check).not.toHaveBeenCalled();
+      expect(result.status).toBe(CERT_STATE.ANCHORING);
+      expect(result.txHash).toBe('0xTXHASH');
+    });
+
+    it('an anchor failure that outlasts every retry leaves the certificate at PENDING_ANCHOR (never FAILED) when the chain confirms it truly never landed', async () => {
+      const chainErr = new Error('RPC unavailable');
+      const { deps, transitions } = makeDeps({
+        chainAdapter: { anchor: jest.fn().mockRejectedValue(chainErr), check: jest.fn().mockResolvedValue({ isIssued: false }) },
+      });
+      const service = createIssuanceService(deps);
+
+      await expect(withFakeTimers(() => service.issue(baseInput(), actor))).rejects.toMatchObject({
+        code: ERROR_CODE.E_RPC_UNAVAILABLE,
+        publicMeta: { certificateId: 'cert-1', certificateNumber: 'SKIT-2026-ABCDEFGHJKMN' },
+      });
+
+      expect(deps.chainAdapter.anchor).toHaveBeenCalledTimes(3);
+      expect(deps.chainAdapter.check).toHaveBeenCalledWith('a'.repeat(64));
+      expect(deps.txRepo.insert).not.toHaveBeenCalled();
+      expect(transitions.map((t) => `${t.from}->${t.to}`)).toEqual([`${CERT_STATE.PENDING_STORAGE}->${CERT_STATE.PENDING_ANCHOR}`]);
+    });
+
+    it('recovers a certificate whose earlier anchor attempt actually succeeded on-chain but was never acknowledged locally, instead of failing or re-anchoring it', async () => {
+      // Every retry attempt fails locally (e.g. the connection drops right
+      // after broadcast, every time we try to check back in) — but the
+      // chain's own state shows it WAS issued. Re-submitting would revert
+      // (AlreadyAnchored); the only correct move is to recognize this as
+      // already done.
+      const chainErr = new Error('connection reset');
+      const { deps, transitions } = makeDeps({
+        chainAdapter: {
+          anchor: jest.fn().mockRejectedValue(chainErr),
+          check: jest.fn().mockResolvedValue({ isIssued: true, isRevoked: false }),
+        },
+      });
+      const service = createIssuanceService(deps);
+
+      const result = await withFakeTimers(() => service.issue(baseInput(), actor));
+
+      expect(deps.chainAdapter.anchor).toHaveBeenCalledTimes(3);
+      expect(deps.txRepo.insert).not.toHaveBeenCalled(); // no real tx to record from this call
+      expect(transitions.map((t) => `${t.from}->${t.to}`)).toEqual([
+        `${CERT_STATE.PENDING_STORAGE}->${CERT_STATE.PENDING_ANCHOR}`,
+        `${CERT_STATE.PENDING_ANCHOR}->${CERT_STATE.ACTIVE}`,
+      ]);
+      expect(result).toMatchObject({ status: CERT_STATE.ACTIVE, txHash: null });
+    });
   });
 
   it('inserts the blockchain_transaction row with type ISSUE on success', async () => {

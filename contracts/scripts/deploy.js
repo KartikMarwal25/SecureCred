@@ -20,7 +20,13 @@ async function main() {
   await registry.waitForDeployment();
 
   const address = await registry.getAddress();
-  console.log(`SecureCredRegistry deployed at ${address}`);
+  // deploymentTransaction() reflects the tx as submitted (blockNumber still
+  // null there even after waitForDeployment()) — the mined receipt is what
+  // actually carries the block number. Already mined at this point, so this
+  // resolves immediately from the same wait ethers already performed.
+  const deploymentReceipt = await registry.deploymentTransaction().wait();
+  const deploymentBlockNumber = deploymentReceipt.blockNumber;
+  console.log(`SecureCredRegistry deployed at ${address} (block ${deploymentBlockNumber})`);
 
   const custodianAddress = process.env.CUSTODIAN_ADDRESS;
   if (custodianAddress) {
@@ -46,6 +52,10 @@ async function main() {
     chainId,
     deployedAt: new Date().toISOString(),
     deployerAddress: deployer.address,
+    // A correct, much cheaper floor than block 0 for the worker's very
+    // first event replay (apps/worker/src/eventListener.js) — no
+    // CertificateAnchored event can exist before the contract did.
+    blockNumber: deploymentBlockNumber,
   };
 
   const outFile = path.join(deploymentsDir, `${network}.json`);

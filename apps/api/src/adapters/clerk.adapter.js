@@ -43,6 +43,26 @@ const DEV_TOKEN_PATTERN = /^dev:([^:]+):([^:]*):([^:]*):([^:]+)(?::([^:]*))?$/;
  * @returns {object} Frozen adapter: `{ verifyToken, verifyWebhook }`.
  */
 export const createClerkAdapter = ({ config, logger }) => {
+  // Fail closed, at boot, exactly like custodianSigner.js does for
+  // CUSTODIAN_PRIVATE_KEY. Without this, an unset CLERK_SECRET_KEY or
+  // CLERK_WEBHOOK_SECRET in production wouldn't crash the boot — it would
+  // silently activate the dev-bypass paths below (an unsigned `dev:...`
+  // bearer token trusted as-is for auth; an unsigned JSON body trusted as-is
+  // for the webhook). Both existed only as a logged warning ("Do not use in
+  // production") with nothing actually stopping it — a real auth bypass and
+  // a real webhook-forgery hole if either env var were ever missing for any
+  // reason (a deployment misconfiguration, a typo, a secret that failed to
+  // load) rather than a deliberate choice.
+  if (config.nodeEnv === 'production') {
+    const missing = [
+      !config.clerkSecretKey && 'CLERK_SECRET_KEY',
+      !config.clerkWebhookSecret && 'CLERK_WEBHOOK_SECRET',
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      throw new AppError(ERROR_CODE.E_INTERNAL, `${missing.join(' and ')} required in production.`, { status: 500 });
+    }
+  }
+
   // Only constructed if actually needed (see the email/fullName fallback in
   // verifyToken below) — most requests never touch this.
   let backendClient = null;

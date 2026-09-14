@@ -5,6 +5,7 @@ import { PublicFooter } from '../../components/PublicFooter.jsx';
 import { Button } from '../../components/Button.jsx';
 import { QrScanner } from '../../components/QrScanner.jsx';
 import { CameraIcon } from '../../components/icons/CameraIcon.jsx';
+import { UploadIcon } from '../../components/icons/UploadIcon.jsx';
 
 const HAS_CAMERA_API =
   typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
@@ -16,6 +17,10 @@ export function VerifyEntryPage() {
   const [identifier, setIdentifier] = useState('');
   const [activeTab, setActiveTab] = useState(HAS_CAMERA_API ? 'scan' : 'enter');
   const inputRef = useRef(null);
+
+  const [uploadIdentifier, setUploadIdentifier] = useState('');
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
 
   const openScanner = useCallback(() => {
     setSearchParams({ scan: '1' });
@@ -58,6 +63,35 @@ export function VerifyEntryPage() {
       navigate(`/verify/${encodeURIComponent(trimmed)}`);
     },
     [identifier, navigate],
+  );
+
+  const handleUploadFileChange = useCallback((event) => {
+    const file = event.target.files?.[0] ?? null;
+    setUploadError(null);
+    if (file && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadFile(null);
+      setUploadError('Please choose a PDF file — that is what SecureCred issues certificates as.');
+      return;
+    }
+    setUploadFile(file);
+  }, []);
+
+  const handleUploadSubmit = useCallback(
+    (event) => {
+      event.preventDefault();
+      const trimmed = uploadIdentifier.trim();
+      if (!trimmed) {
+        setUploadError('Enter the certificate identifier printed on the document.');
+        return;
+      }
+      if (!uploadFile) {
+        setUploadError('Choose the PDF file you want to check.');
+        return;
+      }
+      setUploadError(null);
+      navigate(`/verify/${encodeURIComponent(trimmed)}`, { state: { uploadFile } });
+    },
+    [uploadIdentifier, uploadFile, navigate],
   );
 
   useEffect(() => {
@@ -112,6 +146,19 @@ export function VerifyEntryPage() {
               >
                 Enter ID
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'upload'}
+                onClick={() => selectTab('upload')}
+                className={`min-h-[44px] flex-1 border-b-2 px-12 text-[16px] font-bold leading-[24px] transition-colors duration-200 ${
+                  activeTab === 'upload'
+                    ? 'border-brand text-ink'
+                    : 'border-transparent text-muted hover:text-ink'
+                }`}
+              >
+                Upload document
+              </button>
             </div>
 
             <div className="animate-fade-in mt-24">
@@ -136,7 +183,7 @@ export function VerifyEntryPage() {
                     </Button>
                   </div>
                 )
-              ) : (
+              ) : activeTab === 'enter' ? (
                 <form onSubmit={handleSubmit} className="flex flex-col gap-8">
                   <label
                     htmlFor="certificate-identifier"
@@ -158,6 +205,64 @@ export function VerifyEntryPage() {
                   </p>
                   <Button type="submit" variant="primary" className="mt-8">
                     Verify
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleUploadSubmit} className="flex flex-col gap-16">
+                  <div className="flex flex-col gap-8">
+                    <label
+                      htmlFor="upload-certificate-identifier"
+                      className="text-[12px] font-bold uppercase leading-[16px] tracking-[0.4px] text-body"
+                    >
+                      Certificate identifier
+                    </label>
+                    <input
+                      id="upload-certificate-identifier"
+                      type="text"
+                      value={uploadIdentifier}
+                      onChange={(event) => setUploadIdentifier(event.target.value)}
+                      placeholder="SKIT-2027-K7Q4M2XB"
+                      className="min-h-[44px] rounded-[4px] border border-edge-ctl bg-paper px-12 py-8 font-mono text-[15px] leading-[22px] text-body placeholder:text-faint"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-8">
+                    <label
+                      htmlFor="upload-certificate-file"
+                      className="text-[12px] font-bold uppercase leading-[16px] tracking-[0.4px] text-body"
+                    >
+                      Your copy of the document (PDF)
+                    </label>
+                    <div className="flex flex-col items-center gap-12 rounded-[12px] border border-dashed border-edge-ctl p-16 text-center">
+                      <span className="flex h-48 w-48 items-center justify-center rounded-full bg-surface text-brand">
+                        <UploadIcon className="h-22 w-22" />
+                      </span>
+                      <input
+                        id="upload-certificate-file"
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        onChange={handleUploadFileChange}
+                        className="w-full text-[14px] text-body file:mr-12 file:min-h-[44px] file:rounded-[8px] file:border file:border-edge-ctl file:bg-paper file:px-16 file:font-bold file:text-brand"
+                      />
+                      {uploadFile ? (
+                        <p className="text-[14px] leading-[20px] text-faint">Selected: {uploadFile.name}</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <p className="prose-copy text-[14px] leading-[20px] text-faint">
+                    This checks the exact file you have against what was actually issued — the only
+                    way to catch a document that has been edited after issuance.
+                  </p>
+
+                  {uploadError ? (
+                    <p role="alert" className="text-[14px] leading-[20px] text-bad">
+                      {uploadError}
+                    </p>
+                  ) : null}
+
+                  <Button type="submit" variant="primary" className="mt-8">
+                    Check this document
                   </Button>
                 </form>
               )}

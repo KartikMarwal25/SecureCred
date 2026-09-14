@@ -15,6 +15,11 @@ export class AppError extends Error {
    * @param {unknown} [options.cause] - The underlying error/reason. Server-side only, never sent to clients.
    * @param {object} [options.context] - Extra debugging context. Server-side only, never sent to clients.
    * @param {Array<{path:string, message:string}>} [options.fields] - Field-level validation errors, safe to send.
+   * @param {object} [options.publicMeta] - Extra structured data that IS safe to send to the client (e.g. a
+   *   certificateId to keep navigating to, for a "created but still retrying" outcome) — unlike `context`,
+   *   which is server-side only. Deliberately a separate field from `context` rather than a flag on it, so
+   *   the "never sent to clients" invariant on `context` itself is never conditional on remembering to check
+   *   a flag before including it.
    */
   constructor(code, message, options = {}) {
     super(message);
@@ -24,18 +29,21 @@ export class AppError extends Error {
     this.cause = options.cause;
     this.context = options.context;
     this.fields = options.fields;
+    this.publicMeta = options.publicMeta;
     Error.captureStackTrace?.(this, AppError);
   }
 }
 
 /**
  * Converts any thrown error into the exact, minimal shape allowed across the
- * wire: `{status:'error', code, message, fields?, correlationId}`. Never
- * includes `cause`, `context`, or a stack trace — those stay server-side.
+ * wire: `{status:'error', code, message, fields?, meta?, correlationId}`.
+ * Never includes `cause`, `context`, or a stack trace — those stay
+ * server-side. `meta` (from `publicMeta`) is nested, never spread, so it can
+ * never collide with this shape's own reserved keys.
  *
  * @param {unknown} err - The caught error (AppError or otherwise).
  * @param {string} correlationId - The request's correlation id (req.id).
- * @returns {{status:'error', code:string, message:string, fields?:Array, correlationId:string}}
+ * @returns {{status:'error', code:string, message:string, fields?:Array, meta?:object, correlationId:string}}
  */
 export const toWire = (err, correlationId) => {
   if (err instanceof AppError) {
@@ -46,6 +54,7 @@ export const toWire = (err, correlationId) => {
       correlationId,
     };
     if (err.fields) wire.fields = err.fields;
+    if (err.publicMeta) wire.meta = err.publicMeta;
     return wire;
   }
   return {

@@ -11,12 +11,16 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/ap
 
 /** Thrown for every non-2xx response except the verify endpoint (see verifyCertificate). */
 export class ApiError extends Error {
-  constructor(message, { status, code, details } = {}) {
+  constructor(message, { status, code, details, meta } = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status ?? null;
     this.code = code ?? null;
     this.details = details ?? null;
+    // Wire-safe structured data the server explicitly chose to attach (e.g.
+    // `{certificateId}` on a "created but still retrying" outcome) — never
+    // guessed at, only ever what the API's `meta` field actually sent.
+    this.meta = meta ?? null;
   }
 }
 
@@ -81,6 +85,7 @@ async function request(path, { method = 'GET', body, params, auth = true, signal
       status: response.status,
       code: data?.error?.code || data?.code,
       details: data?.error?.details,
+      meta: data?.meta,
     });
   }
 
@@ -132,6 +137,20 @@ export async function revokeCertificate(certificateNumber, reason) {
   });
 }
 
+/**
+ * Submits a CSV of rows to issue as one batch. Resolves as soon as the job
+ * is created (status PENDING) — issuance itself runs server-side, one row
+ * at a time; poll getBatchStatus(batchJobId) for progress and per-row results.
+ */
+export async function issueCertificatesBatch(csvContent) {
+  return request('/certificates/batch', { method: 'POST', body: { csvContent } });
+}
+
+/** Progress and per-row outcomes for a batch issuance job. */
+export async function getBatchStatus(batchJobId) {
+  return request(`/certificates/batch/${encodeURIComponent(batchJobId)}`, { method: 'GET' });
+}
+
 // ---- Public verification ---------------------------------------------------
 
 /**
@@ -149,6 +168,45 @@ export async function verifyCertificate(certificateNumber, { signal } = {}) {
     response = await fetch(
       `${BASE_URL}/certificates/verify/${encodeURIComponent(certificateNumber)}`,
       { method: 'GET', headers: { Accept: 'application/json' }, signal },
+    );
+  } catch {
+    throw new ApiError('The server could not be reached. Check your connection and try again.', {
+      status: 0,
+      code: 'E_NETWORK',
+    });
+  }
+
+  const data = await parseBody(response);
+  if (!data || !data.outcome) {
+    throw new ApiError('The verification service returned an unexpected response.', {
+      status: response.status,
+    });
+  }
+  return data;
+}
+
+/**
+ * Same outcome contract as verifyCertificate (never throws ApiError for
+ * TAMPERED/NOT_FOUND — only for a genuine transport failure or an
+ * unparseable response), but checks the verifier's OWN uploaded file
+ * against the certificate's stored fingerprint directly, rather than
+ * re-fetching the document from IPFS. This is the only check that can
+ * actually catch a document the verifier altered themselves — see the
+ * comment above the equivalent endpoint on the API side for why.
+ *
+ * @param {string} certificateNumber
+ * @param {File|Blob} file
+ */
+export async function verifyCertificateWithUpload(certificateNumber, file) {
+  let response;
+  try {
+    response = await fetch(
+      `${BASE_URL}/certificates/verify-upload/${encodeURIComponent(certificateNumber)}`,
+      {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/pdf' },
+        body: file,
+      },
     );
   } catch {
     throw new ApiError('The server could not be reached. Check your connection and try again.', {
@@ -235,6 +293,17 @@ export async function getInstitutionShowcase() {
 /** The signed-in staff member's own institution — name and public code. */
 export async function getMyInstitution() {
   return request('/institutions/me', { method: 'GET' });
+}
+
+/**
+ * The custodian wallet's current gas balance — the shared wallet that
+ * broadcasts every institution's anchor/revoke transactions. Returns
+ * `{gasStatus: 'healthy'|'low'|'critical', balance: string, currency: 'POL'}`.
+ * A low/critical balance means issuance or revocation could start failing
+ * for lack of gas, independent of anything the institution itself did.
+ */
+export async function getGasStatus() {
+  return request('/institutions/me/gas-status', { method: 'GET' });
 }
 
 /**

@@ -324,5 +324,6 @@
   "network": "amoy",
   "chainId": 80002,
   "deployedAt": "2026-08-31T16:35:18.102Z",
-  "deployerAddress": "0xBfea8153551ca44a55c83CB8C16AEC3F84a5fCCA"
+  "deployerAddress": "0xBfea8153551ca44a55c83CB8C16AEC3F84a5fCCA",
+  "blockNumber": 46375670
 }

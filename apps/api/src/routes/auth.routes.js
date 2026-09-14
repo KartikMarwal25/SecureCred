@@ -15,12 +15,13 @@ import { AppError } from '../lib/errors.js';
  *
  * @param {object} deps
  * @param {import('express').RequestHandler} deps.requireAuth
+ * @param {import('express').RequestHandler} deps.authLimiter
  * @param {object} deps.userRepo
  * @param {object} deps.institutionRepo
  * @param {object} deps.institutionJoinRequestRepo
  * @returns {import('express').Router}
  */
-export const createAuthRouter = ({ requireAuth, userRepo, institutionRepo, institutionJoinRequestRepo }) => {
+export const createAuthRouter = ({ requireAuth, authLimiter, userRepo, institutionRepo, institutionJoinRequestRepo }) => {
   const router = Router();
 
   router.get('/me', requireAuth, async (req, res, next) => {
@@ -60,7 +61,18 @@ export const createAuthRouter = ({ requireAuth, userRepo, institutionRepo, insti
     }
   });
 
-  router.post('/choose-role', requireAuth, validate(chooseRoleRequestSchema, 'body'), async (req, res, next) => {
+  // authLimiter was defined in container.js's rate limiters but never
+  // actually applied anywhere — this is the endpoint it was clearly meant
+  // for: it validates an institution access code (a shared secret) and can
+  // create new institution rows, so it's exactly the "repeated guesses/spam"
+  // shape a rate limiter exists to bound, on top of (not instead of) the
+  // access code's own 48-bit entropy (crypto.randomBytes(6), institution.repo.js).
+  router.post(
+    '/choose-role',
+    requireAuth,
+    authLimiter,
+    validate(chooseRoleRequestSchema, 'body'),
+    async (req, res, next) => {
     try {
       // An institution account with no institutionId is "detached" — they
       // left (see POST /institutions/me/leave), most commonly after

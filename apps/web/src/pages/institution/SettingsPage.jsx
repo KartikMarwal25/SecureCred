@@ -6,12 +6,74 @@ import {
   approveJoinRequest,
   rejectJoinRequest,
   leaveInstitution,
+  getGasStatus,
   ApiError,
 } from '../../api/client.js';
 import { Skeleton } from '../../components/Skeleton.jsx';
 import { Button } from '../../components/Button.jsx';
 import { CopyableValue } from '../../components/CopyableValue.jsx';
 import { formatDate } from '../../lib/formatDate.js';
+import { TONE_CLASSES } from '../../lib/tone.js';
+
+const GAS_STATUS_TONE = { healthy: 'ok', low: 'warn', critical: 'bad' };
+
+const GAS_STATUS_COPY = {
+  healthy: 'Plenty of gas for issuing and revoking certificates.',
+  low: 'Running low. Certificates can still be issued, but it is worth topping up soon.',
+  critical: 'Very low — issuing or revoking a certificate could fail for lack of gas at any moment.',
+};
+
+function GasStatusPanel() {
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await getGasStatus();
+      setStatus(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err : new ApiError('Could not load the wallet balance.'));
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const tone = status ? TONE_CLASSES[GAS_STATUS_TONE[status.gasStatus]] : TONE_CLASSES.neutral;
+
+  return (
+    <div className={`rounded-[16px] border border-edge p-16 shadow-sm sm:p-24 ${status ? tone.bg : 'bg-paper'}`}>
+      <p className="text-[18px] font-bold leading-[26px] text-ink">Blockchain wallet balance</p>
+      <p className="mt-4 text-[14px] leading-[20px] text-faint">
+        The shared wallet SecureCred uses to record your certificates on the blockchain. It pays a
+        small network fee for every issuance and revocation.
+      </p>
+
+      {error ? (
+        <div className="mt-16">
+          <p className="text-[14px] leading-[20px] text-bad">{error.message}</p>
+          <Button variant="secondary" className="mt-12" onClick={load}>
+            Try again
+          </Button>
+        </div>
+      ) : status === null ? (
+        <Skeleton className="mt-16 h-[48px] w-full rounded-[8px]" />
+      ) : (
+        <div className="mt-16 flex items-center gap-12">
+          <span className={`h-12 w-12 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
+          <div>
+            <p className={`text-[16px] font-bold leading-[24px] ${tone.text}`}>
+              {status.balance} {status.currency}
+            </p>
+            <p className="text-[14px] leading-[20px] text-faint">{GAS_STATUS_COPY[status.gasStatus]}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function JoinRequestsPanel() {
   const [requests, setRequests] = useState(null);
@@ -205,6 +267,8 @@ export function SettingsPage() {
           {institution.institutionName} · Code {institution.institutionCode}
         </p>
       </div>
+
+      <GasStatusPanel />
 
       <JoinRequestsPanel />
 

@@ -82,6 +82,20 @@ export const joinRequestIdParamSchema = z.object({
   requestId: z.string().uuid(),
 });
 
+export const batchJobIdParamSchema = z.object({
+  batchJobId: z.string().uuid(),
+});
+
+/** Body for POST /certificates/batch — the raw CSV content as a string,
+ * bounded well under express.json()'s default 100kb body limit so a
+ * batch upload gets a clear E_VALIDATION rather than a generic 413. */
+export const batchIssuanceRequestSchema = z.object({
+  csvContent: z
+    .string()
+    .min(1, 'The CSV file is empty.')
+    .max(200_000, 'The CSV file is too large — split it into smaller batches.'),
+});
+
 export const certificateNumberParamSchema = z.object({
   certificateNumber: certificateNumberSchema,
 });

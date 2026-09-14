@@ -29,6 +29,7 @@ const makeFakeContainer = (overrides = {}) => ({
   revocationLimiter: (req, res, next) => next(),
   verifyMinuteLimiter: (req, res, next) => next(),
   verifyHourLimiter: (req, res, next) => next(),
+  authLimiter: (req, res, next) => next(),
   ...overrides,
 });
 

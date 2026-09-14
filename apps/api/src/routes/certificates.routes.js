@@ -2,7 +2,7 @@
  * `/api/v1/certificates` — issuance, listing, detail, status polling,
  * revocation, public verification, and public document retrieval.
  */
-import { Router } from 'express';
+import { Router, raw } from 'express';
 import {
   ROLE,
   CERT_STATE,
@@ -15,6 +15,8 @@ import {
   certificateListQuerySchema,
   certificateIdParamSchema,
   certificateNumberParamSchema,
+  batchIssuanceRequestSchema,
+  batchJobIdParamSchema,
 } from '@securecred/shared';
 import { validate } from '../middleware/validate.mw.js';
 import { requireRole } from '../middleware/rbac.mw.js';
@@ -79,6 +81,7 @@ const toPublicView = (cert) => ({
  * @param {object} deps.issuanceService
  * @param {object} deps.verificationService
  * @param {object} deps.revocationService
+ * @param {object} deps.batchIssuanceService
  * @param {object} deps.certificateRepo
  * @param {object} deps.fileRepo
  * @param {object} deps.txRepo
@@ -95,6 +98,7 @@ export const createCertificatesRouter = ({
   issuanceService,
   verificationService,
   revocationService,
+  batchIssuanceService,
   certificateRepo,
   fileRepo,
   txRepo,
@@ -124,6 +128,65 @@ export const createCertificatesRouter = ({
         // the convention used by every other endpoint in this router (list,
         // verify) so the web client can read fields off the root consistently.
         res.status(202).json({ status: 'ok', ...result });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Registered before GET /:id so "batch" is never mistaken for a
+  // certificate id (certificateIdParamSchema would reject it as a non-UUID
+  // anyway, but a more specific route matching first is the clearer intent).
+  router.post(
+    '/batch',
+    requireAuth,
+    requireRole(ROLE.INSTITUTION),
+    issuanceLimiter,
+    validate(batchIssuanceRequestSchema, 'body'),
+    async (req, res, next) => {
+      try {
+        const result = await batchIssuanceService.createBatch(req.body.csvContent, {
+          userId: req.auth.userId,
+          institutionId: req.auth.institutionId,
+        });
+        res.status(202).json({ status: 'ok', ...result });
+      } catch (err) {
+        // parseCsv/createBatch throw plain Errors for malformed input
+        // (empty file, wrong column count, missing required column, over
+        // the row cap) — surfaced as a validation error, not a 500.
+        next(new AppError(ERROR_CODE.E_VALIDATION, err.message));
+      }
+    },
+  );
+
+  router.get(
+    '/batch/:batchJobId',
+    requireAuth,
+    requireRole(ROLE.INSTITUTION),
+    validate(batchJobIdParamSchema, 'params'),
+    async (req, res, next) => {
+      try {
+        const result = await batchIssuanceService.getBatchStatus(req.params.batchJobId);
+        if (!result || result.job.institution_id !== req.auth.institutionId) {
+          throw new AppError(ERROR_CODE.E_NOT_FOUND, 'Batch job not found.');
+        }
+        res.status(200).json({
+          status: 'ok',
+          batchJobId: result.job.batch_job_id,
+          jobStatus: result.job.status,
+          totalRows: result.job.total_rows,
+          processedRows: result.job.processed_rows,
+          succeededRows: result.job.succeeded_rows,
+          failedRows: result.job.failed_rows,
+          createdAt: result.job.created_at,
+          completedAt: result.job.completed_at,
+          rows: result.rows.map((r) => ({
+            rowNumber: r.row_number,
+            status: r.status,
+            certificateId: r.certificate_id,
+            errorMessage: r.error_message,
+          })),
+        });
       } catch (err) {
         next(err);
       }
@@ -260,27 +323,90 @@ export const createCertificatesRouter = ({
     },
   );
 
-  router.get('/:certificateNumber/document', validate(certificateNumberParamSchema, 'params'), async (req, res, next) => {
-    try {
-      const result = await verificationService.verify(req.params.certificateNumber, VERIFICATION_METHOD.CERT_ID, null);
+  // Upload-based verification: the verifier supplies their own copy of the
+  // document instead of relying on the IPFS-served copy. This is the only
+  // check that can actually catch a document a verifier altered themselves
+  // — see the module-level note in verificationService.js for why the
+  // IPFS-refetch path (used by /verify above) structurally cannot.
+  // `raw()` only consumes requests whose Content-Type is application/pdf, so
+  // it coexists safely with the global express.json() body parser without
+  // needing to be pre-mounted in app.js (unlike webhooks/batch, which are
+  // also application/json and would otherwise race the global parser).
+  router.post(
+    '/verify-upload/:certificateNumber',
+    verifyMinuteLimiter,
+    verifyHourLimiter,
+    validate(certificateNumberParamSchema, 'params'),
+    raw({ type: 'application/pdf', limit: '10mb' }),
+    async (req, res, next) => {
+      try {
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          throw new AppError(
+            ERROR_CODE.E_VALIDATION,
+            'Upload a PDF document to verify (Content-Type: application/pdf).',
+          );
+        }
 
-      if (result.outcome !== VERIFY_OUTCOME.VERIFIED && result.outcome !== VERIFY_OUTCOME.REVOKED) {
-        throw new AppError(ERROR_CODE.E_FORBIDDEN, 'This document cannot be verified.');
+        const result = await verificationService.verify(
+          req.params.certificateNumber,
+          VERIFICATION_METHOD.HASH,
+          null,
+          req.body,
+        );
+
+        const isPublic = result.outcome === VERIFY_OUTCOME.VERIFIED || result.outcome === VERIFY_OUTCOME.REVOKED;
+        const body = {
+          status: 'ok',
+          outcome: result.outcome,
+          degraded: result.degraded,
+          certificate: isPublic ? toPublicView(result.certificate) : null,
+          revocationReason: result.outcome === VERIFY_OUTCOME.REVOKED ? result.revocationReason : null,
+          lastConfirmedAt: result.lastConfirmedAt,
+          certificateHash: isPublic ? result.certificateHash : null,
+          ipfsCid: isPublic ? result.ipfsCid : null,
+          txHash: isPublic ? result.txHash : null,
+        };
+
+        const statusCode =
+          result.outcome === VERIFY_OUTCOME.NOT_FOUND ? 404 : result.outcome === VERIFY_OUTCOME.TAMPERED ? 400 : 200;
+        res.status(statusCode).json(body);
+      } catch (err) {
+        next(err);
       }
+    },
+  );
 
-      const files = await fileRepo.findByCertificateId(result.certificate.certificate_id);
-      const latestFile = files[files.length - 1];
-      if (!latestFile) {
-        throw new AppError(ERROR_CODE.E_FORBIDDEN, 'This document cannot be verified.');
+  // Shares /verify's rate limiters — this does everything /verify does
+  // (the same verificationService.verify() lookup) plus a real external
+  // Pinata fetch on top, so it's strictly more expensive per request, not
+  // less; it had no rate limiting at all before this, unlike its sibling.
+  router.get(
+    '/:certificateNumber/document',
+    verifyMinuteLimiter,
+    verifyHourLimiter,
+    validate(certificateNumberParamSchema, 'params'),
+    async (req, res, next) => {
+      try {
+        const result = await verificationService.verify(req.params.certificateNumber, VERIFICATION_METHOD.CERT_ID, null);
+
+        if (result.outcome !== VERIFY_OUTCOME.VERIFIED && result.outcome !== VERIFY_OUTCOME.REVOKED) {
+          throw new AppError(ERROR_CODE.E_FORBIDDEN, 'This document cannot be verified.');
+        }
+
+        const files = await fileRepo.findByCertificateId(result.certificate.certificate_id);
+        const latestFile = files[files.length - 1];
+        if (!latestFile) {
+          throw new AppError(ERROR_CODE.E_FORBIDDEN, 'This document cannot be verified.');
+        }
+
+        const buffer = await pinataAdapter.fetchByCid(latestFile.ipfs_cid);
+        res.set('Content-Type', 'application/pdf');
+        res.status(200).send(buffer);
+      } catch (err) {
+        next(err);
       }
-
-      const buffer = await pinataAdapter.fetchByCid(latestFile.ipfs_cid);
-      res.set('Content-Type', 'application/pdf');
-      res.status(200).send(buffer);
-    } catch (err) {
-      next(err);
-    }
-  });
+    },
+  );
 
   return router;
 };

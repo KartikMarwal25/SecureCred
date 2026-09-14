@@ -95,6 +95,59 @@ describe('createVerificationService.verify (orchestration, substitute dependenci
     expect(result.outcome).toBe(VERIFY_OUTCOME.TAMPERED);
   });
 
+  it('upload path: VERIFIED when the uploaded document hashes to the stored fingerprint, and pinataAdapter is never called', async () => {
+    const { service, pinataAdapter, hashLib } = makeService({
+      hashLib: {
+        sha256Hex: jest.fn((buf) => (buf.toString() === 'genuine' ? 'a'.repeat(64) : 'b'.repeat(64))),
+        fingerprintsEqual: jest.fn((a, b) => a === b),
+      },
+    });
+    const result = await service.verify(
+      'SKIT-2026-ABCDEFGHJKMN',
+      VERIFICATION_METHOD.HASH,
+      null,
+      Buffer.from('genuine'),
+    );
+    expect(result.outcome).toBe(VERIFY_OUTCOME.VERIFIED);
+    // The whole point of the upload path: never fetch from IPFS at all —
+    // the verifier's own bytes are hashed directly.
+    expect(pinataAdapter.fetchByCid).not.toHaveBeenCalled();
+    expect(hashLib.sha256Hex).toHaveBeenCalledWith(Buffer.from('genuine'));
+  });
+
+  it('upload path: TAMPERED when the uploaded document does NOT hash to the stored fingerprint (the actual tamper-detection demo)', async () => {
+    const { service, pinataAdapter } = makeService({
+      hashLib: {
+        sha256Hex: jest.fn().mockReturnValue('different-hash-entirely'.padEnd(64, '0')),
+        fingerprintsEqual: jest.fn(() => false),
+      },
+    });
+    const result = await service.verify(
+      'SKIT-2026-ABCDEFGHJKMN',
+      VERIFICATION_METHOD.HASH,
+      null,
+      Buffer.from('edited CGPA to 9.72'),
+    );
+    expect(result.outcome).toBe(VERIFY_OUTCOME.TAMPERED);
+    expect(pinataAdapter.fetchByCid).not.toHaveBeenCalled();
+  });
+
+  it('upload path: REVOKED still takes precedence over a matching upload hash', async () => {
+    const { service } = makeService({
+      chainAdapter: { check: jest.fn().mockResolvedValue({ isIssued: true, isRevoked: true, ipfsCid: 'devcid-abc', revocationReason: 'issued in error' }) },
+      hashLib: { sha256Hex: jest.fn().mockReturnValue('a'.repeat(64)), fingerprintsEqual: jest.fn(() => true) },
+    });
+    const result = await service.verify('SKIT-2026-ABCDEFGHJKMN', VERIFICATION_METHOD.HASH, null, Buffer.from('genuine'));
+    expect(result.outcome).toBe(VERIFY_OUTCOME.REVOKED);
+  });
+
+  it('upload path: NOT_FOUND for an unknown certificate number, uploaded buffer or not', async () => {
+    const { service, chainAdapter } = makeService({ certificateRepo: { findByCertificateNumber: jest.fn().mockResolvedValue(undefined) } });
+    const result = await service.verify('SKIT-2026-NOPE00000000', VERIFICATION_METHOD.HASH, null, Buffer.from('anything'));
+    expect(result.outcome).toBe(VERIFY_OUTCOME.NOT_FOUND);
+    expect(chainAdapter.check).not.toHaveBeenCalled();
+  });
+
   it('returns NOT_FOUND without ever calling the chain when no row exists', async () => {
     const { service, chainAdapter } = makeService({ certificateRepo: { findByCertificateNumber: jest.fn().mockResolvedValue(undefined) } });
     const result = await service.verify('SKIT-2026-NOPE00000000', VERIFICATION_METHOD.CERT_ID);

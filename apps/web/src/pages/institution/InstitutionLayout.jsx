@@ -7,7 +7,8 @@ import { listJoinRequests } from '../../api/client.js';
 
 const NAV_ITEMS = [
   { to: '/app/registry', label: 'Certificates' },
-  { to: '/app/issue', label: 'Issue credential' },
+  { to: '/app/issue', label: 'Issue credential', end: true },
+  { to: '/app/issue/batch', label: 'Batch issue' },
   { to: '/app/activity', label: 'Activity' },
   { to: '/app/settings', label: 'Settings' },
 ];
@@ -54,6 +55,7 @@ export function InstitutionLayout() {
               <NavLink
                 key={item.to}
                 to={item.to}
+                end={item.end}
                 className={({ isActive }) =>
                   `relative flex min-h-[44px] items-center rounded-full px-16 text-[16px] font-bold leading-[24px] transition-colors duration-200 ${
                     isActive ? 'bg-brand text-paper' : 'text-brand hover:bg-surface'

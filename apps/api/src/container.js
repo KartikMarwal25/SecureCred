@@ -26,6 +26,7 @@ import { createInstitutionRepo } from './repositories/institution.repo.js';
 import { createInstitutionJoinRequestRepo } from './repositories/institutionJoinRequest.repo.js';
 import { createAuditRepo } from './repositories/audit.repo.js';
 import { createVerificationLogRepo } from './repositories/verificationLog.repo.js';
+import { createBatchIssuanceRepo } from './repositories/batchIssuance.repo.js';
 import { inTransaction } from './repositories/txHelper.js';
 
 import { compile as pdfCompile } from './adapters/pdf.adapter.js';
@@ -38,6 +39,7 @@ import { createIssuanceService } from './services/issuanceService.js';
 import { createVerificationService } from './services/verificationService.js';
 import { createRevocationService } from './services/revocationService.js';
 import { createLifecycleService } from './services/lifecycleService.js';
+import { createBatchIssuanceService } from './services/batchIssuanceService.js';
 
 import { createRequireAuth } from './middleware/auth.mw.js';
 import { createRateLimiter, byIp, byInstitution } from './middleware/rate-limiter.mw.js';
@@ -71,6 +73,7 @@ export const createContainer = () => {
   const institutionJoinRequestRepo = createInstitutionJoinRequestRepo({ pool });
   const auditRepo = createAuditRepo({ pool });
   const verificationLogRepo = createVerificationLogRepo({ pool, logger });
+  const batchIssuanceRepo = createBatchIssuanceRepo({ pool });
 
   const pdfAdapter = { compile: pdfCompile };
   const pinataAdapter = createPinataAdapter({ config, logger });
@@ -95,6 +98,13 @@ export const createContainer = () => {
     config,
     logger,
     withTransaction,
+  });
+  const batchIssuanceService = createBatchIssuanceService({
+    batchIssuanceRepo,
+    issuanceService,
+    certificateRepo,
+    userRepo,
+    logger,
   });
   const verificationService = createVerificationService({
     certificateRepo,
@@ -163,9 +173,10 @@ export const createContainer = () => {
       institutionJoinRequestRepo,
       auditRepo,
       verificationLogRepo,
+      batchIssuanceRepo,
     }),
     adapters: Object.freeze({ pdfAdapter, pinataAdapter, chainAdapter, clerkAdapter }),
-    services: Object.freeze({ issuanceService, verificationService, revocationService, lifecycleService }),
+    services: Object.freeze({ issuanceService, verificationService, revocationService, lifecycleService, batchIssuanceService }),
     certificateRepo,
     fileRepo,
     txRepo,
@@ -173,6 +184,7 @@ export const createContainer = () => {
     issuanceService,
     verificationService,
     revocationService,
+    batchIssuanceService,
     userRepo,
     clerkAdapter,
     requireAuth,

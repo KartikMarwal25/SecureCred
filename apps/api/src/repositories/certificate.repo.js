@@ -190,6 +190,35 @@ export const createCertificateRepo = ({ pool }) => {
   };
 
   /**
+   * Finds a certificate by its natural business key — not a DB constraint
+   * (certificate_number/certificate_hash are the only unique columns, and
+   * both are generated per-attempt, so two independent issuance attempts
+   * for the same student+title+date never collide on either). Used only by
+   * batchIssuanceService's stalled-row resume path, to tell "a certificate
+   * already exists for this exact row, from an attempt that started before
+   * a crash" apart from "never attempted" — without this check, blindly
+   * retrying a row whose previous attempt got interrupted mid-pipeline
+   * (after its certificate row was created, before the batch row recorded
+   * the outcome) would silently issue a second, duplicate certificate.
+   *
+   * @param {string} studentId
+   * @param {string} title
+   * @param {string} issueDate - ISO date string.
+   * @param {import('pg').PoolClient} [client]
+   * @returns {Promise<object|undefined>} The most recently created match, if any.
+   */
+  const findByStudentTitleDate = async (studentId, title, issueDate, client) => {
+    const { rows } = await exec(client).query(
+      `SELECT ${FULL_COLUMNS} FROM certificate
+       WHERE student_id = $1 AND title = $2 AND issue_date = $3
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [studentId, title, issueDate],
+    );
+    return rows[0];
+  };
+
+  /**
    * Public-safe projection used by the anonymous verification/document endpoints.
    *
    * @param {string} certificateNumber
@@ -400,6 +429,7 @@ export const createCertificateRepo = ({ pool }) => {
     findById,
     findDetailById,
     findByHash,
+    findByStudentTitleDate,
     findByCertificateNumber,
     listByInstitution,
     listByHolderUserId,

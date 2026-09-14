@@ -101,6 +101,11 @@ export default [
       'apps/api/src/container.js',
       'apps/worker/src/worker.js',
       'apps/api/src/adapters/chain.adapter.js',
+      // A real-chain integration test — needs ethers directly to register a
+      // throwaway test issuer on the local chain for the test fixture
+      // (registerIssuer isn't part of chain.adapter.js's own exposed
+      // surface; application code never calls it, only this test's setup does).
+      'apps/api/src/adapters/chain.adapter.nonce.test.js',
     ],
     rules: {
       'no-restricted-imports': [

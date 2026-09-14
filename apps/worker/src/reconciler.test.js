@@ -39,7 +39,10 @@ describe('reconciler per-state decision logic', () => {
 
   it('retries the anchor call for a stalled PENDING_ANCHOR certificate using its already-pinned file', async () => {
     const transitions = [];
-    const chainAdapter = { anchor: jest.fn().mockResolvedValue({ txHash: '0xTX1', nonce: 5 }), check: jest.fn() };
+    const chainAdapter = {
+      anchor: jest.fn().mockResolvedValue({ txHash: '0xTX1', nonce: 5 }),
+      check: jest.fn().mockResolvedValue({ isIssued: false, isRevoked: false }),
+    };
     const lifecycleService = { transition: async (id, from, to) => transitions.push({ id, from, to }) };
     const txInserts = [];
     const certificateRepo = {
@@ -52,11 +55,36 @@ describe('reconciler per-state decision logic', () => {
     const reconciler = createReconciler({ certificateRepo, fileRepo, txRepo, chainAdapter, lifecycleService, config, logger: fakeLogger });
     await reconciler.sweepOnce();
 
+    expect(chainAdapter.check).toHaveBeenCalledWith('h'.repeat(64));
     expect(chainAdapter.anchor).toHaveBeenCalledWith('h'.repeat(64), 'devcid-xyz', 'c2');
     expect(txInserts).toEqual([
       expect.objectContaining({ certificateId: 'c2', transactionHash: '0xTX1', transactionType: TRANSACTION_TYPE.ISSUE }),
     ]);
     expect(transitions).toEqual([{ id: 'c2', from: CERT_STATE.PENDING_ANCHOR, to: CERT_STATE.ANCHORING }]);
+  });
+
+  it('recovers a stalled PENDING_ANCHOR certificate that the chain shows was already anchored, instead of resubmitting it', async () => {
+    // A previous anchor() call (from the original request or an earlier
+    // sweep) actually succeeded on-chain, but its result never made it back
+    // locally. Resubmitting would revert (AlreadyAnchored) and could be
+    // mistaken for a genuine failure — checking chain state first avoids that.
+    const transitions = [];
+    const chainAdapter = { anchor: jest.fn(), check: jest.fn().mockResolvedValue({ isIssued: true, isRevoked: false }) };
+    const lifecycleService = { transition: async (id, from, to) => transitions.push({ id, from, to }) };
+    const certificateRepo = {
+      findStalled: async () => [{ certificate_id: 'c2', status: CERT_STATE.PENDING_ANCHOR, certificate_hash: 'h'.repeat(64), reconcile_attempts: 0 }],
+      bumpReconcileAttempts: jest.fn(),
+    };
+    const fileRepo = { findByCertificateId: jest.fn() };
+    const txRepo = { insert: jest.fn() };
+
+    const reconciler = createReconciler({ certificateRepo, fileRepo, txRepo, chainAdapter, lifecycleService, config, logger: fakeLogger });
+    await reconciler.sweepOnce();
+
+    expect(chainAdapter.anchor).not.toHaveBeenCalled();
+    expect(fileRepo.findByCertificateId).not.toHaveBeenCalled();
+    expect(txRepo.insert).not.toHaveBeenCalled();
+    expect(transitions).toEqual([{ id: 'c2', from: CERT_STATE.PENDING_ANCHOR, to: CERT_STATE.ACTIVE }]);
   });
 
   it('for a stalled ANCHORING certificate, queries the contract state BEFORE consulting the local receipt', async () => {

@@ -18,6 +18,7 @@ import { DevLoginPage } from './pages/public/DevLoginPage.jsx';
 import { InstitutionLayout } from './pages/institution/InstitutionLayout.jsx';
 import { RegistryPage } from './pages/institution/RegistryPage.jsx';
 import { IssuePage } from './pages/institution/IssuePage.jsx';
+import { BatchIssuePage } from './pages/institution/BatchIssuePage.jsx';
 import { CertificateDetailPage } from './pages/institution/CertificateDetailPage.jsx';
 import { ActivityPage } from './pages/institution/ActivityPage.jsx';
 import { SettingsPage } from './pages/institution/SettingsPage.jsx';
@@ -62,6 +63,7 @@ function AppRoutes() {
           <Route index element={<Navigate to="registry" replace />} />
           <Route path="registry" element={<RegistryPage />} />
           <Route path="issue" element={<IssuePage />} />
+          <Route path="issue/batch" element={<BatchIssuePage />} />
           <Route path="certificate/:id" element={<CertificateDetailPage />} />
           <Route path="activity" element={<ActivityPage />} />
           <Route path="settings" element={<SettingsPage />} />

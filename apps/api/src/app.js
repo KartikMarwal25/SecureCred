@@ -5,9 +5,14 @@
  *
  * Middleware order is load-bearing: cors -> helmet -> requestId -> the
  * webhooks router's raw-body route (registered before the global JSON body
- * parser, so Clerk's signature can be verified over untouched bytes) ->
- * express.json() -> pino-http request logging -> routers -> errorHandler
- * (registered LAST, so it catches everything upstream).
+ * parser, so Clerk's signature can be verified over untouched bytes) -> a
+ * larger-limit JSON parser scoped to the batch-issuance route only
+ * (registered before the global parser for the same reason webhooks is —
+ * once a body is parsed, or rejected for exceeding a limit, a later
+ * `express.json()` call can't re-parse it) -> express.json() (the smaller,
+ * default-limit parser every other route gets) -> pino-http request logging
+ * -> routers -> errorHandler (registered LAST, so it catches everything
+ * upstream).
  */
 import express from 'express';
 import pinoHttp from 'pino-http';
@@ -42,6 +47,11 @@ export const createApp = (deps) => {
     createWebhooksRouter({ clerkAdapter: deps.clerkAdapter, userRepo: deps.userRepo, logger }),
   );
 
+  // Also mounted before the global parser, for the same "can't re-parse an
+  // already-consumed body" reason — a batch CSV upload is routinely larger
+  // than every other request this API accepts.
+  app.use('/api/v1/certificates/batch', express.json({ limit: '2mb' }));
+
   app.use(express.json());
   app.use(pinoHttp({ logger }));
 
@@ -49,6 +59,7 @@ export const createApp = (deps) => {
     '/api/v1/auth',
     createAuthRouter({
       requireAuth: deps.requireAuth,
+      authLimiter: deps.authLimiter,
       userRepo: deps.userRepo,
       institutionRepo: deps.repos?.institutionRepo,
       institutionJoinRequestRepo: deps.repos?.institutionJoinRequestRepo,
@@ -61,6 +72,7 @@ export const createApp = (deps) => {
       issuanceService: deps.issuanceService,
       verificationService: deps.verificationService,
       revocationService: deps.revocationService,
+      batchIssuanceService: deps.batchIssuanceService,
       certificateRepo: deps.certificateRepo,
       fileRepo: deps.fileRepo,
       txRepo: deps.txRepo,
@@ -87,6 +99,7 @@ export const createApp = (deps) => {
       institutionJoinRequestRepo: deps.repos?.institutionJoinRequestRepo,
       userRepo: deps.userRepo,
       auditRepo: deps.repos?.auditRepo,
+      chainAdapter: deps.adapters?.chainAdapter,
       requireAuth: deps.requireAuth,
     }),
   );

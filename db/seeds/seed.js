@@ -64,6 +64,13 @@ const INSTITUTION = {
   institution_code: 'SKIT',
   email: 'registrar@skit.ac.in',
   status: 'ACTIVE',
+  // Matches the fixed demo code migration 014_institution_access_code.sql
+  // backfills for institution_code = 'SKIT'. That backfill only reaches an
+  // already-existing SKIT row; on a from-scratch `migrate up` followed by
+  // this seed script (migrations always run first), no such row exists yet
+  // when 014 runs, so this insert must supply it directly or it fails the
+  // column's NOT NULL constraint.
+  access_code: 'SKIT-STAFF-2026',
 };
 
 const INSTITUTION_STAFF_USER = {
@@ -118,10 +125,10 @@ async function upsertInstitution(client, inst) {
     return { id: existing.rows[0].id, created: false };
   }
   await client.query(
-    `INSERT INTO institution (institution_id, institution_name, institution_code, email, status)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO institution (institution_id, institution_name, institution_code, email, status, access_code)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (institution_code) DO NOTHING`,
-    [inst.institution_id, inst.institution_name, inst.institution_code, inst.email, inst.status]
+    [inst.institution_id, inst.institution_name, inst.institution_code, inst.email, inst.status, inst.access_code]
   );
   const after = await client.query(
     'SELECT institution_id AS id FROM institution WHERE institution_code = $1',

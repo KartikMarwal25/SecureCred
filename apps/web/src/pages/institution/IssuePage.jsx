@@ -106,6 +106,16 @@ export function IssuePage() {
       const data = await issueCertificate(result.data);
       navigate(`/app/certificate/${data.certificateId}`);
     } catch (err) {
+      // A transient Pinata/RPC outage can exhaust the API's own short
+      // in-request retries without the certificate itself failing — it was
+      // created and is left queued for the worker to keep retrying
+      // automatically. The API signals this via `meta.certificateId`
+      // rather than a hard failure, so navigate there instead of showing a
+      // dead-end error: the detail page already shows real, live progress.
+      if (err instanceof ApiError && err.meta?.certificateId) {
+        navigate(`/app/certificate/${err.meta.certificateId}`);
+        return;
+      }
       setSubmitting(false);
       if (err instanceof ApiError && err.code === ERROR_CODE.E_DUPLICATE_CERTIFICATE) {
         const message =

@@ -47,6 +47,20 @@ export const createReconciler = ({ certificateRepo, fileRepo, txRepo, chainAdapt
    */
   const handleStalledPendingAnchor = async (cert) => {
     try {
+      // Check the chain's own truth FIRST. A previous anchor() call —
+      // from the original issuance request, or an earlier reconciler sweep
+      // — may have actually broadcast and been mined successfully even
+      // though its result never reached us (e.g. the connection dropped
+      // right after submission). Blindly retrying in that case would
+      // resubmit for an already-anchored hash, which reverts on-chain
+      // (AlreadyAnchored) and would otherwise burn a reconcile attempt on
+      // what is actually a success, not a failure.
+      const chainFacts = await chainAdapter.check(cert.certificate_hash);
+      if (chainFacts.isIssued) {
+        await lifecycleService.transition(cert.certificate_id, CERT_STATE.PENDING_ANCHOR, CERT_STATE.ACTIVE, {});
+        return;
+      }
+
       const files = await fileRepo.findByCertificateId(cert.certificate_id);
       const latestFile = files[files.length - 1];
       if (!latestFile) throw new Error('no pinned file found to anchor');

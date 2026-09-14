@@ -5,6 +5,7 @@
  * event listener and reconciler, and shuts down gracefully on SIGTERM.
  */
 import pg from 'pg';
+import qrLib from 'qrcode';
 import { config } from '../../api/src/lib/config.js';
 import { logger } from '../../api/src/lib/logger.js';
 import { createProvider } from '../../api/src/adapters/chain.adapter.js';
@@ -15,11 +16,23 @@ import { createFileRepo } from '../../api/src/repositories/file.repo.js';
 import { createTxRepo } from '../../api/src/repositories/tx.repo.js';
 import { createAuditRepo } from '../../api/src/repositories/audit.repo.js';
 import { createWorkerCursorRepo } from '../../api/src/repositories/workerCursor.repo.js';
+import { createUserRepo } from '../../api/src/repositories/user.repo.js';
+import { createInstitutionRepo } from '../../api/src/repositories/institution.repo.js';
+import { createBatchIssuanceRepo } from '../../api/src/repositories/batchIssuance.repo.js';
+import { inTransaction } from '../../api/src/repositories/txHelper.js';
+import { compile as pdfCompile } from '../../api/src/adapters/pdf.adapter.js';
+import { createPinataAdapter } from '../../api/src/adapters/pinata.adapter.js';
 import { createLifecycleService } from '../../api/src/services/lifecycleService.js';
+import { createIssuanceService } from '../../api/src/services/issuanceService.js';
+import { createBatchIssuanceService } from '../../api/src/services/batchIssuanceService.js';
+import * as hashLib from '../../api/src/lib/hash.js';
+import * as certIdLib from '../../api/src/lib/certId.js';
 import { createEventListener } from './eventListener.js';
 import { createReconciler } from './reconciler.js';
+import { createBatchReconciler } from './batchReconciler.js';
 
 const pool = new pg.Pool({ connectionString: config.databaseUrl });
+const withTransaction = (fn) => inTransaction(pool, fn);
 const provider = createProvider(config.rpcUrl);
 const custodianSigner = createCustodianSigner({ config, provider, logger });
 const signer = custodianSigner.connect();
@@ -30,8 +43,44 @@ const fileRepo = createFileRepo({ pool });
 const txRepo = createTxRepo({ pool });
 const auditRepo = createAuditRepo({ pool });
 const workerCursorRepo = createWorkerCursorRepo({ pool });
+const userRepo = createUserRepo({ pool });
+const institutionRepo = createInstitutionRepo({ pool });
+const batchIssuanceRepo = createBatchIssuanceRepo({ pool });
+
+const pdfAdapter = { compile: pdfCompile };
+const pinataAdapter = createPinataAdapter({ config, logger });
 
 const lifecycleService = createLifecycleService({ certificateRepo, auditRepo, logger });
+
+// The batch reconciler resumes a stalled job by re-running the SAME
+// issuance pipeline the API uses for every row — never a separate/lighter
+// implementation, so a resumed row goes through every persist-before-
+// external-call guarantee issuanceService.js already provides.
+const issuanceService = createIssuanceService({
+  certificateRepo,
+  fileRepo,
+  txRepo,
+  userRepo,
+  institutionRepo,
+  pdfAdapter,
+  pinataAdapter,
+  chainAdapter,
+  hashLib,
+  certIdLib,
+  qrLib,
+  lifecycleService,
+  auditRepo,
+  config,
+  logger,
+  withTransaction,
+});
+const batchIssuanceService = createBatchIssuanceService({
+  batchIssuanceRepo,
+  issuanceService,
+  certificateRepo,
+  userRepo,
+  logger,
+});
 
 const eventListener = createEventListener({
   chainAdapter,
@@ -53,9 +102,12 @@ const reconciler = createReconciler({
   logger,
 });
 
+const batchReconciler = createBatchReconciler({ batchIssuanceService, config, logger });
+
 const main = async () => {
   await eventListener.start();
   reconciler.start();
+  batchReconciler.start();
   logger.info({ chainNetwork: config.chainNetwork }, 'SecureCred worker started');
 };
 
@@ -67,6 +119,7 @@ main().catch((err) => {
 const shutdown = (signal) => {
   logger.info({ signal }, 'worker shutting down');
   reconciler.stop();
+  batchReconciler.stop();
   eventListener.stop();
   pool
     .end()

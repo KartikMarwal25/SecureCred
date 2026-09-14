@@ -67,9 +67,16 @@ export const createVerificationService = ({
    * @param {string} certificateNumber
    * @param {string} method - VERIFICATION_METHOD.*
    * @param {string|null} [verifierUserId] - Authenticated verifier, if any (null for anonymous).
+   * @param {Buffer|null} [uploadedDocumentBuffer] - When provided (VERIFICATION_METHOD.HASH), the
+   *   verifier's own copy of the document is hashed directly and compared against the stored
+   *   fingerprint, instead of re-fetching the document from IPFS. This is the only path that can
+   *   actually catch a forged/edited document being passed off under a genuine certificate number
+   *   — re-fetching from IPFS only ever re-derives the SAME bytes the chain already points at
+   *   (content-addressed storage can't serve different bytes under an unchanged CID), so it can
+   *   detect a compromised gateway but never a document the verifier altered themselves.
    * @returns {Promise<{outcome: string, certificate: object|null, degraded: boolean, lastConfirmedAt: string|null, revocationReason: string|null}>}
    */
-  const verify = async (certificateNumber, method, verifierUserId = null) => {
+  const verify = async (certificateNumber, method, verifierUserId = null, uploadedDocumentBuffer = null) => {
     const certificate = await certificateRepo.findByCertificateNumber(certificateNumber);
 
     if (!certificate || CERT_STATE_NOT_PUBLIC.includes(certificate.status)) {
@@ -108,7 +115,14 @@ export const createVerificationService = ({
     }
 
     let hashMatchesOnChain = false;
-    if (chainFacts.isIssued) {
+    if (chainFacts.isIssued && uploadedDocumentBuffer) {
+      // The verifier's own file, hashed directly — no IPFS round-trip
+      // needed or wanted here; this is specifically checking whether THIS
+      // document matches what was issued, not whether IPFS is serving it
+      // correctly (that's the other branch, below).
+      const uploadedHash = hashLib.sha256Hex(uploadedDocumentBuffer);
+      hashMatchesOnChain = hashLib.fingerprintsEqual(uploadedHash, certificate.certificate_hash);
+    } else if (chainFacts.isIssued) {
       try {
         const documentBytes = await pinataAdapter.fetchByCid(chainFacts.ipfsCid);
         const freshHash = hashLib.sha256Hex(documentBytes);

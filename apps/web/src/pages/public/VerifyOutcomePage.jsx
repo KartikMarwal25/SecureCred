@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { VERIFY_OUTCOME } from '@securecred/shared';
-import { verifyCertificate, ApiError } from '../../api/client.js';
+import { verifyCertificate, verifyCertificateWithUpload, ApiError } from '../../api/client.js';
 import { PublicHeader } from '../../components/PublicHeader.jsx';
 import { PublicFooter } from '../../components/PublicFooter.jsx';
 import { OutcomeBanner } from '../../components/OutcomeBanner.jsx';
@@ -13,6 +13,14 @@ import { Button } from '../../components/Button.jsx';
 
 export function VerifyOutcomePage() {
   const { certificateNumber } = useParams();
+  const location = useLocation();
+  // Set by VerifyEntryPage's "Upload document" tab, carried via router
+  // navigation state (never the URL) — a File object survives history
+  // state via the structured clone algorithm. Only meaningful on the
+  // initial load of this page; a manual refresh loses it and falls back to
+  // the ordinary IPFS-backed check, which is the only sane behavior since a
+  // File can't be re-derived from a URL.
+  const uploadedFile = location.state?.uploadFile ?? null;
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,7 +29,9 @@ export function VerifyOutcomePage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await verifyCertificate(certificateNumber);
+      const data = uploadedFile
+        ? await verifyCertificateWithUpload(certificateNumber, uploadedFile)
+        : await verifyCertificate(certificateNumber);
       setResult(data);
     } catch (err) {
       setResult(null);
@@ -29,6 +39,7 @@ export function VerifyOutcomePage() {
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- uploadedFile is only ever read once, at mount, by design (see comment above)
   }, [certificateNumber]);
 
   useEffect(() => {
@@ -54,6 +65,11 @@ export function VerifyOutcomePage() {
             <p className="mt-4 truncate font-mono text-[15px] leading-[22px] text-faint">
               {certificateNumber}
             </p>
+            {uploadedFile ? (
+              <p className="mt-4 text-[14px] leading-[20px] text-faint">
+                Checked against your uploaded file: <span className="font-bold text-body">{uploadedFile.name}</span>
+              </p>
+            ) : null}
           </div>
 
           {loading ? (

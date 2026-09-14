@@ -6,8 +6,17 @@
  */
 import { CERT_STATE, ERROR_CODE, TRANSACTION_TYPE } from '@securecred/shared';
 import { AppError } from '../lib/errors.js';
+import { withRetry } from '../lib/retry.js';
 
 const MAX_CERT_NUMBER_ATTEMPTS = 5;
+
+// Bounded, short in-request retries for the two external calls in this
+// pipeline (Pinata pin, chain anchor) — absorbs a blip lasting a few
+// seconds to tens of seconds without needing the worker's reconciler at
+// all. Deliberately short: this blocks the HTTP request (or one batch row),
+// so it must give up quickly and hand off to the reconciler for anything
+// longer, not hang the caller indefinitely.
+const EXTERNAL_CALL_RETRY_OPTIONS = { attempts: 3, baseDelayMs: 2000 };
 
 /**
  * @param {unknown} err
@@ -193,19 +202,38 @@ export const createIssuanceService = ({
       }
     }
 
-    // Step 7: pin to IPFS. A failure here goes straight to FAILED without
-    // ever calling the chain.
+    // Step 7: pin to IPFS. A transient failure (Pinata/IPFS blip) is
+    // retried a few times in-request before giving up — pinning the same
+    // bytes twice is harmless (same content, same resulting CID), so this
+    // retry is always safe to attempt. If every attempt fails, the
+    // certificate is left at PENDING_STORAGE — NOT failed — so the
+    // worker's reconciler keeps it queued rather than losing it outright;
+    // see the thrown AppError's publicMeta for how a caller keeps tracking
+    // this certificate through that.
     let pinResult;
     try {
-      pinResult = await pinataAdapter.pin(pdfBuffer, certificateNumber);
+      pinResult = await withRetry(() => pinataAdapter.pin(pdfBuffer, certificateNumber), {
+        ...EXTERNAL_CALL_RETRY_OPTIONS,
+        onRetry: (err, attempt) =>
+          logger?.warn?.(
+            { err, attempt, certificateId: certificateRow.certificate_id },
+            'issuanceService: pin attempt failed, retrying',
+          ),
+      });
     } catch (err) {
-      await lifecycleService.transition(
-        certificateRow.certificate_id,
-        CERT_STATE.PENDING_STORAGE,
-        CERT_STATE.FAILED,
-        { actorUserId: actor.userId, extra: { failure_cause: String(err.message ?? 'IPFS pin failed').slice(0, 500) } },
+      logger?.warn?.(
+        { err, certificateId: certificateRow.certificate_id },
+        'issuanceService: pin failed after retries — leaving PENDING_STORAGE for the reconciler to keep trying',
       );
-      throw err;
+      throw new AppError(
+        ERROR_CODE.E_PINATA_FAILED,
+        'The document could not be stored right now. This certificate has been created and will keep trying automatically.',
+        {
+          cause: err,
+          context: { certificateId: certificateRow.certificate_id, certificateNumber },
+          publicMeta: { certificateId: certificateRow.certificate_id, certificateNumber },
+        },
+      );
     }
 
     await withTransaction(async (client) => {
@@ -219,39 +247,64 @@ export const createIssuanceService = ({
       );
     });
 
-    // Step 8: anchor on-chain. A failure here also goes straight to FAILED.
+    // Step 8: anchor on-chain. Same short in-request retry as the pin step.
+    // Anchoring is NOT naturally idempotent (a second broadcast for an
+    // already-anchored hash reverts on-chain), so before giving up, check
+    // the chain's own current state directly — if an earlier attempt's
+    // broadcast actually succeeded but its result never reached us (e.g.
+    // the connection dropped right after submission), this is a recovery,
+    // not a failure, and must never be retried again from scratch.
     let anchorResult;
     try {
-      anchorResult = await chainAdapter.anchor(certificateHash, pinResult.cid, certificateRow.certificate_id);
+      anchorResult = await withRetry(() => chainAdapter.anchor(certificateHash, pinResult.cid, certificateRow.certificate_id), {
+        ...EXTERNAL_CALL_RETRY_OPTIONS,
+        onRetry: (err, attempt) =>
+          logger?.warn?.(
+            { err, attempt, certificateId: certificateRow.certificate_id },
+            'issuanceService: anchor attempt failed, retrying',
+          ),
+      });
     } catch (err) {
-      await lifecycleService.transition(
-        certificateRow.certificate_id,
-        CERT_STATE.PENDING_ANCHOR,
-        CERT_STATE.FAILED,
-        { actorUserId: actor.userId, extra: { failure_cause: String(err.message ?? 'chain anchor failed').slice(0, 500) } },
-      );
-      throw err;
+      const chainFacts = await chainAdapter.check(certificateHash).catch(() => null);
+      if (chainFacts?.isIssued) {
+        logger?.info?.(
+          { certificateId: certificateRow.certificate_id },
+          'issuanceService: anchor call failed locally, but the chain shows it already succeeded — recovering instead of retrying',
+        );
+        anchorResult = { txHash: null, nonce: null, alreadyAnchored: true };
+      } else {
+        logger?.warn?.(
+          { err, certificateId: certificateRow.certificate_id },
+          'issuanceService: anchor failed after retries — leaving PENDING_ANCHOR for the reconciler to keep trying',
+        );
+        throw new AppError(
+          ERROR_CODE.E_RPC_UNAVAILABLE,
+          'The blockchain network could not be reached right now. This certificate has been created and will keep trying automatically.',
+          {
+            cause: err,
+            context: { certificateId: certificateRow.certificate_id, certificateNumber },
+            publicMeta: { certificateId: certificateRow.certificate_id, certificateNumber },
+          },
+        );
+      }
     }
 
+    const settledState = anchorResult.alreadyAnchored ? CERT_STATE.ACTIVE : CERT_STATE.ANCHORING;
     await withTransaction(async (client) => {
-      await txRepo.insert(
-        {
-          certificateId: certificateRow.certificate_id,
-          transactionHash: anchorResult.txHash,
-          transactionType: TRANSACTION_TYPE.ISSUE,
-          network: config.chainNetwork,
-          contractAddress: config.contractAddress,
-          nonce: anchorResult.nonce,
-        },
-        client,
-      );
-      await lifecycleService.transition(
-        certificateRow.certificate_id,
-        CERT_STATE.PENDING_ANCHOR,
-        CERT_STATE.ANCHORING,
-        { actorUserId: actor.userId },
-        client,
-      );
+      if (!anchorResult.alreadyAnchored) {
+        await txRepo.insert(
+          {
+            certificateId: certificateRow.certificate_id,
+            transactionHash: anchorResult.txHash,
+            transactionType: TRANSACTION_TYPE.ISSUE,
+            network: config.chainNetwork,
+            contractAddress: config.contractAddress,
+            nonce: anchorResult.nonce,
+          },
+          client,
+        );
+      }
+      await lifecycleService.transition(certificateRow.certificate_id, CERT_STATE.PENDING_ANCHOR, settledState, { actorUserId: actor.userId }, client);
     });
 
     await auditRepo.append(actor.userId, 'CERTIFICATE_ISSUED', 'certificate', certificateRow.certificate_id, {
@@ -262,7 +315,7 @@ export const createIssuanceService = ({
     return {
       certificateId: certificateRow.certificate_id,
       certificateNumber,
-      status: CERT_STATE.ANCHORING,
+      status: settledState,
       txHash: anchorResult.txHash,
       verifyUrl,
     };
