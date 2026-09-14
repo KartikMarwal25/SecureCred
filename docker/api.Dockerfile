@@ -25,6 +25,14 @@ COPY packages/shared packages/shared
 COPY apps/api apps/api
 COPY apps/worker apps/worker
 
+# chain.adapter.js reads contracts/deployments/<network>.json for the
+# contract address/ABI. docker-compose's own api service instead bind-mounts
+# this directory from the host at runtime (see docker-compose.yml) — that
+# only works for docker-compose itself; a standalone image (e.g. deployed on
+# Render, with no host volume to mount) needs the file baked in directly, or
+# every chain call fails with "Contract not deployed for network ...".
+COPY contracts/deployments contracts/deployments
+
 WORKDIR /app/apps/api
 EXPOSE 4000
 CMD ["node", "src/server.js"]
