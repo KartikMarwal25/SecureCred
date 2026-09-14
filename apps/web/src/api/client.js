@@ -87,6 +87,26 @@ async function request(path, { method = 'GET', body, params, auth = true, signal
   return data;
 }
 
+// ---- Auth: who am I -----------------------------------------------------------
+
+/**
+ * Asks the API who the signed-in Clerk user is (role/institutionId/
+ * studentId), since those are resolved authoritatively from the database,
+ * not from Clerk's own session-token claims — a self-registered student has
+ * no Clerk public metadata at all. See ClerkAuthBridge.jsx.
+ */
+export async function getMyScope() {
+  return request('/auth/me', { method: 'GET' });
+}
+
+/**
+ * Submits the one-time role choice a brand-new signed-up account makes.
+ * `payload` is `{role: 'student'}` or `{role: 'institution', institutionName, institutionCode}`.
+ */
+export async function chooseRole(payload) {
+  return request('/auth/choose-role', { method: 'POST', body: payload });
+}
+
 // ---- Institution: certificates -------------------------------------------------
 
 export async function issueCertificate(payload) {
@@ -150,6 +170,43 @@ export function getCertificateDocumentUrl(certificateNumber) {
   return `${BASE_URL}/certificates/${encodeURIComponent(certificateNumber)}/document`;
 }
 
+/**
+ * Fetches the certificate PDF as a Blob, going through the same ApiError
+ * shape as every other endpoint — used instead of a plain `<a href>` so the
+ * caller can show a loading state and a real error message instead of the
+ * browser navigating to a raw JSON error response.
+ *
+ * @param {string} certificateNumber
+ * @returns {Promise<Blob>}
+ * @throws {ApiError}
+ */
+export async function fetchCertificateDocument(certificateNumber) {
+  let response;
+  try {
+    response = await fetch(getCertificateDocumentUrl(certificateNumber));
+  } catch {
+    throw new ApiError('The server could not be reached. Check your connection and try again.', {
+      status: 0,
+      code: 'E_NETWORK',
+    });
+  }
+
+  if (!response.ok) {
+    const data = await parseBody(response);
+    const message =
+      data?.error?.message ||
+      data?.message ||
+      'The certificate document is unavailable right now.';
+    throw new ApiError(message, {
+      status: response.status,
+      code: data?.error?.code || data?.code,
+      details: data?.error?.details,
+    });
+  }
+
+  return response.blob();
+}
+
 // ---- Institution: activity ---------------------------------------------------
 
 /**
@@ -163,6 +220,56 @@ export function getCertificateDocumentUrl(certificateNumber) {
  */
 export async function getActivityStats() {
   return request('/institutions/me/activity', { method: 'GET' });
+}
+
+/**
+ * Public, unauthenticated — the real registered issuer with the most active
+ * certificates, for the landing page's showcase card. Returns
+ * `{institutionName: null, certificateCount: 0}` if no institution has
+ * registered yet, rather than 404ing.
+ */
+export async function getInstitutionShowcase() {
+  return request('/institutions/showcase', { method: 'GET', auth: false });
+}
+
+/** The signed-in staff member's own institution — name and public code. */
+export async function getMyInstitution() {
+  return request('/institutions/me', { method: 'GET' });
+}
+
+/**
+ * Generates a new access code for the signed-in staff member's institution
+ * and immediately invalidates the old one. Any staff member may call this —
+ * there is no separate admin tier — so the new code must be shared with
+ * colleagues right away.
+ */
+export async function rotateInstitutionAccessCode() {
+  return request('/institutions/me/rotate-access-code', { method: 'POST' });
+}
+
+/**
+ * Detaches the signed-in staff member from their institution — self-service
+ * fix for having created or joined the wrong one (e.g. a typo'd institution
+ * code). Their account and any certificates they've already issued/revoked
+ * are untouched; they just go back through /choose-role to pick correctly.
+ */
+export async function leaveInstitution() {
+  return request('/institutions/me/leave', { method: 'POST' });
+}
+
+/** Pending requests to join the signed-in staff member's institution. */
+export async function listJoinRequests() {
+  return request('/institutions/me/join-requests', { method: 'GET' });
+}
+
+/** Grants the requester real institution access. */
+export async function approveJoinRequest(requestId) {
+  return request(`/institutions/me/join-requests/${encodeURIComponent(requestId)}/approve`, { method: 'POST' });
+}
+
+/** Declines the request; the requester may submit a new one later. */
+export async function rejectJoinRequest(requestId) {
+  return request(`/institutions/me/join-requests/${encodeURIComponent(requestId)}/reject`, { method: 'POST' });
 }
 
 // ---- Student ----------------------------------------------------------------

@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "db:migrate": "node db/migrate.js up",
-    "db:seed": "node db/seed.js",
+    "db:seed": "node db/seeds/seed.js",
     "contracts:compile": "npm run compile --workspace=contracts",
     "contracts:test": "npm run test --workspace=contracts",
     "contracts:node": "npm run node --workspace=contracts",

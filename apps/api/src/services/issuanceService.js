@@ -74,7 +74,7 @@ export const createIssuanceService = ({
    * @param {object} [input.attributes]
    * @param {{userId: string, institutionId: string}} actor
    * @returns {Promise<{certificateId: string, certificateNumber: string, status: string, txHash: string, verifyUrl: string}>}
-   * @throws {AppError} E_VALIDATION (future issue date), E_HOLDER_NOT_FOUND, E_CERT_NUMBER_COLLISION,
+   * @throws {AppError} E_VALIDATION (future issue date, or holder email already a student elsewhere), E_CERT_NUMBER_COLLISION,
    *   E_DUPLICATE_CERTIFICATE, E_PINATA_FAILED, E_PDF_COMPILE_FAILED, or a chain-adapter error.
    */
   const issue = async (input, actor) => {
@@ -84,10 +84,23 @@ export const createIssuanceService = ({
       });
     }
 
-    const student = await userRepo.findStudentByEnrollment(actor.institutionId, input.enrollmentNumber);
-    if (!student) {
-      throw new AppError(ERROR_CODE.E_HOLDER_NOT_FOUND, 'No student was found with that enrolment number at your institution.');
-    }
+    // Resolves an existing student by enrolment number, or auto-provisions one
+    // (and, if needed, a placeholder account the holder can later link to by
+    // signing up with the same email) — there is no separate "register a
+    // student" step in this system; the first certificate issued to someone
+    // is what brings their student record into existence.
+    const student = await withTransaction((client) =>
+      userRepo.resolveOrCreateStudentForIssuance(
+        {
+          institutionId: actor.institutionId,
+          enrollmentNumber: input.enrollmentNumber,
+          holderEmail: input.holderEmail,
+          holderName: input.holderName,
+          course: input.course,
+        },
+        client,
+      ),
+    );
 
     const institution = await institutionRepo.findById(actor.institutionId);
     if (!institution) {

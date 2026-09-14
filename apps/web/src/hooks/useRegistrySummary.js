@@ -3,7 +3,9 @@ import { CERT_STATE } from '@securecred/shared';
 import { listCertificates } from '../api/client.js';
 
 const AWAITING_STATES = [CERT_STATE.PENDING_STORAGE, CERT_STATE.PENDING_ANCHOR, CERT_STATE.ANCHORING];
-const SUMMARY_SAMPLE_LIMIT = 200;
+// Must not exceed the shared certificateListQuerySchema's `limit` max (100)
+// or every summary request 400s.
+const SUMMARY_SAMPLE_LIMIT = 100;
 
 /**
  * The documented `GET /certificates` contract returns `{items, nextCursor}`

@@ -19,7 +19,10 @@ const DEV_STORAGE_DIR = path.resolve(__dirname, '../../.devstorage');
 const PIN_ENDPOINT = 'https://api.pinata.cloud/pinning/pinFileToIPFS';
 const AUTH_TEST_ENDPOINT = 'https://api.pinata.cloud/data/testAuthentication';
 const PIN_TIMEOUT_MS = 20_000;
-const GATEWAY_TIMEOUT_MS = 5_000;
+// Pinata's free-tier gateway has been observed taking 6-15+ seconds to serve
+// a freshly-pinned file (cold-cache/throttling on that tier) — 5s was
+// cutting off a request that would have succeeded a moment later.
+const GATEWAY_TIMEOUT_MS = 20_000;
 
 /**
  * Creates the Pinata/IPFS adapter.

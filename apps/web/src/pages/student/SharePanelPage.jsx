@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { getCertificate, ApiError } from '../../api/client.js';
 import { buildQrDataUrl } from '../../lib/qr.js';
 import { Skeleton } from '../../components/Skeleton.jsx';
 import { Button } from '../../components/Button.jsx';
+import { BackButton } from '../../components/BackButton.jsx';
 
 /**
  * Share panel: only the verification link and QR code live here. The PDF
@@ -81,68 +82,80 @@ export function SharePanelPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-[480px] flex-col gap-16 px-12 py-32">
+      <main
+        className="mx-auto flex min-h-screen max-w-[480px] flex-col gap-16 px-12 py-32"
+        style={{ backgroundImage: 'var(--gradient-hero)' }}
+      >
         <Skeleton className="h-[32px] w-2/3" />
-        <Skeleton className="h-[200px] w-full" />
+        <Skeleton className="h-[280px] w-full rounded-[16px]" />
       </main>
     );
   }
 
   if (error || !certificate) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-[480px] flex-col gap-16 px-12 py-32">
+      <main
+        className="mx-auto flex min-h-screen max-w-[480px] flex-col gap-16 px-12 py-32"
+        style={{ backgroundImage: 'var(--gradient-hero)' }}
+      >
         <p className="text-[16px] leading-[24px] text-neutral">
           This credential could not be loaded. Check your connection and try again.
         </p>
-        <Link to="/me" className="font-bold text-brand">
-          Back to your credentials
-        </Link>
+        <BackButton label="Back to your credentials" />
       </main>
     );
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-[480px] flex-col gap-24 px-12 py-32">
-      <div>
+    <main
+      className="mx-auto flex min-h-screen max-w-[480px] flex-col gap-24 px-12 py-32"
+      style={{ backgroundImage: 'var(--gradient-hero)' }}
+    >
+      <BackButton label="Back to your credentials" />
+
+      <div className="animate-fade-in-up">
         <h1 className="text-[24px] font-bold leading-[32px] text-ink">Share this credential</h1>
         <p className="mt-8 text-[16px] leading-[24px] text-muted">{certificate.title}</p>
       </div>
 
-      <div>
-        <label
-          htmlFor="share-link"
-          className="text-[12px] font-bold uppercase leading-[16px] tracking-[0.4px] text-body"
-        >
-          Verification link
-        </label>
-        <div className="mt-4 flex flex-col gap-8 sm:flex-row">
-          <input
-            id="share-link"
-            type="text"
-            readOnly
-            value={verifyLink}
-            onFocus={(event) => event.target.select()}
-            className="min-h-[44px] flex-1 rounded-[4px] border border-edge-ctl bg-surface px-12 py-8 text-[16px] leading-[24px] text-body"
-          />
-          <Button variant="secondary" onClick={handleCopy}>
-            {copied ? 'Copied' : 'Copy link'}
+      <div className="animate-fade-in-up flex flex-col gap-24 rounded-[16px] border border-edge bg-paper p-24 shadow-sm">
+        <div>
+          <label
+            htmlFor="share-link"
+            className="text-[12px] font-bold uppercase leading-[16px] tracking-[0.4px] text-body"
+          >
+            Verification link
+          </label>
+          <div className="mt-4 flex flex-col gap-8 sm:flex-row">
+            <input
+              id="share-link"
+              type="text"
+              readOnly
+              value={verifyLink}
+              onFocus={(event) => event.target.select()}
+              className="min-h-[44px] flex-1 rounded-[4px] border border-edge-ctl bg-surface px-12 py-8 text-[16px] leading-[24px] text-body"
+            />
+            <Button variant="secondary" onClick={handleCopy}>
+              {copied ? 'Copied' : 'Copy link'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-12">
+          {qrDataUrl ? (
+            <img
+              key={qrDataUrl}
+              src={qrDataUrl}
+              alt="QR code linking to the verification page for this credential"
+              className="animate-scale-in h-[160px] w-[160px] rounded-[12px] border border-edge shadow-xs"
+            />
+          ) : (
+            <Skeleton className="h-[160px] w-[160px] rounded-[12px]" />
+          )}
+          <Button variant="secondary" onClick={handleDownloadQr} disabled={!qrDataUrl}>
+            Download the QR code
           </Button>
         </div>
-      </div>
-
-      <div className="flex flex-col items-start gap-12">
-        {qrDataUrl ? (
-          <img
-            src={qrDataUrl}
-            alt="QR code linking to the verification page for this credential"
-            className="h-[160px] w-[160px] rounded-[6px] border border-edge"
-          />
-        ) : (
-          <Skeleton className="h-[160px] w-[160px]" />
-        )}
-        <Button variant="secondary" onClick={handleDownloadQr} disabled={!qrDataUrl}>
-          Download the QR code
-        </Button>
       </div>
 
       <p className="prose-copy text-[14px] leading-[20px] text-faint">
@@ -153,10 +166,6 @@ export function SharePanelPage() {
         If this credential is later revoked, the same link will show that the next time someone
         checks it.
       </p>
-
-      <Link to="/me" className="font-bold text-brand">
-        Back to your credentials
-      </Link>
     </main>
   );
 }

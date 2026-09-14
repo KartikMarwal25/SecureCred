@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CERT_STATE } from '@securecred/shared';
-import { getCertificate, getCertificateDocumentUrl, ApiError } from '../../api/client.js';
+import { getCertificate, ApiError } from '../../api/client.js';
 import { useCertificateStatus } from '../../hooks/useCertificateStatus.js';
 import { StateChip } from '../../components/StateChip.jsx';
 import { LifecycleProgress } from '../../components/LifecycleProgress.jsx';
 import { CopyableValue } from '../../components/CopyableValue.jsx';
-import { Button, buttonClassName } from '../../components/Button.jsx';
+import { CertificateDocumentButton } from '../../components/CertificateDocumentButton.jsx';
+import { Button } from '../../components/Button.jsx';
 import { Skeleton } from '../../components/Skeleton.jsx';
 import { formatDate } from '../../lib/formatDate.js';
 import { RevokeDialog } from './RevokeDialog.jsx';
@@ -83,15 +84,15 @@ export function CertificateDetailPage() {
     return (
       <div className="flex flex-col gap-16">
         <Skeleton className="h-[32px] w-2/3" />
-        <Skeleton className="h-[120px] w-full" />
-        <Skeleton className="h-[80px] w-full" />
+        <Skeleton className="h-[120px] w-full rounded-[16px]" />
+        <Skeleton className="h-[80px] w-full rounded-[16px]" />
       </div>
     );
   }
 
   if (loadError || !certificate) {
     return (
-      <div className="rounded-[6px] border border-edge bg-neutral-bg p-16">
+      <div className="rounded-[16px] border border-edge bg-neutral-bg p-16 shadow-xs">
         <p className="text-[16px] leading-[24px] text-neutral">
           This certificate could not be loaded. Check your connection and try again.
         </p>
@@ -102,12 +103,11 @@ export function CertificateDetailPage() {
     );
   }
 
-  const documentUrl = getCertificateDocumentUrl(certificate.certificateNumber);
   const hasAnchoredRecord = Boolean(certificate.txHash);
   const currentState = pollStatus?.state ?? certificate.status;
 
   return (
-    <div className="flex flex-col gap-24">
+    <div className="animate-fade-in-up flex flex-col gap-24">
       <div className="flex flex-col gap-8">
         <p className="font-mono text-[15px] leading-[22px] text-faint">
           {certificate.certificateNumber}
@@ -129,7 +129,7 @@ export function CertificateDetailPage() {
       />
 
       {isPolling ? null : timedOut ? (
-        <div className="rounded-[6px] border border-edge bg-surface p-16">
+        <div className="rounded-[16px] border border-edge bg-surface p-16 shadow-xs">
           <p className="text-[14px] leading-[20px] text-faint">
             This is taking longer than usual. You can check again for an update.
           </p>
@@ -140,7 +140,7 @@ export function CertificateDetailPage() {
       ) : null}
 
       {hasAnchoredRecord ? (
-        <div className="rounded-[6px] border border-edge bg-paper p-16">
+        <div className="rounded-[16px] border border-edge bg-paper p-16 shadow-sm sm:p-24">
           <p className="text-[18px] font-bold leading-[26px] text-ink">Anchored record</p>
           <dl className="mt-16 grid grid-cols-1 gap-16 md:grid-cols-2">
             <div>
@@ -192,7 +192,7 @@ export function CertificateDetailPage() {
         </div>
       ) : null}
 
-      <div className="rounded-[6px] border border-edge bg-surface p-16">
+      <div className="rounded-[16px] border border-edge bg-surface p-16 shadow-xs">
         <p className="text-[14px] leading-[20px] text-muted">
           Issued by {certificate.issuedBy || 'the registrar'} on {formatDate(certificate.issueDate)}
           {certificate.revocation
@@ -201,10 +201,12 @@ export function CertificateDetailPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-12">
-        <a href={documentUrl} className={buttonClassName('secondary')}>
-          Download
-        </a>
+      <div className="flex flex-wrap items-start gap-12">
+        <CertificateDocumentButton
+          certificateNumber={certificate.certificateNumber}
+          status={currentState}
+          label="Download"
+        />
         <Button variant="secondary" onClick={handleCopyLink}>
           {linkCopied ? 'Copied' : 'Copy verification link'}
         </Button>

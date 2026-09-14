@@ -29,6 +29,15 @@ const envSchema = z.object({
   CORS_ALLOWED_ORIGINS: z.string().default(''),
 
   DATABASE_URL: z.string().min(1).default('postgres://securecred_app:securecred_dev_password@localhost:5432/securecred'),
+  // Off by default — unchanged behavior for local Postgres (no SSL) and for
+  // Docker Compose's own postgres service. A managed instance (AWS RDS, GCP
+  // Cloud SQL, etc.) typically requires TLS; DATABASE_SSL=true enables it.
+  // DATABASE_SSL_REJECT_UNAUTHORIZED stays true (verify the server cert)
+  // unless a specific managed provider's cert isn't in Node's default trust
+  // store, in which case an operator sets it to false deliberately — never
+  // as this schema's own default.
+  DATABASE_SSL: z.coerce.boolean().default(false),
+  DATABASE_SSL_REJECT_UNAUTHORIZED: z.coerce.boolean().default(true),
 
   CLERK_PUBLISHABLE_KEY: z.string().default(''),
   CLERK_SECRET_KEY: z.string().default(''),
@@ -78,6 +87,8 @@ export const config = Object.freeze({
   corsAllowedOrigins: csvList(env.CORS_ALLOWED_ORIGINS),
 
   databaseUrl: env.DATABASE_URL,
+  databaseSsl: env.DATABASE_SSL,
+  databaseSslRejectUnauthorized: env.DATABASE_SSL_REJECT_UNAUTHORIZED,
 
   clerkPublishableKey: env.CLERK_PUBLISHABLE_KEY,
   clerkSecretKey: env.CLERK_SECRET_KEY,

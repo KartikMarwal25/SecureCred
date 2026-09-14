@@ -19,3 +19,9 @@ apps/web/.vite/
 db/data/
 docker/pgdata/
 apps/api/.devstorage/
+
+# Weekly submission staging area — day-by-day commit plans + code staged for
+# each team member's real weekly commits, generated per week on request.
+# Not part of the application; not linted, not committed to this repo's own
+# history. See weekly-work/README.md.
+weekly-work/

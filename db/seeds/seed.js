@@ -4,8 +4,11 @@
 // ***************************************************************************
 // LOCAL DEVELOPMENT / DEMO SEED DATA ONLY. Do not run this against a shared
 // staging or production database. It inserts a small, fixed set of demo rows
-// (one institution, one institution-staff user, one student + student user,
-// and two demo certificates) so the app has something to show locally.
+// (one institution, one institution-staff user, one student + student user)
+// so the app has real accounts to sign in as locally. Deliberately does NOT
+// seed any certificates — a seeded certificate row with no real chain
+// anchor or pinned file behind it is unreachable/undownloadable by design,
+// so it's better to issue a real one through the app than fake one here.
 // ***************************************************************************
 //
 // Idempotent: safe to run more than once. Every insert either uses
@@ -83,29 +86,6 @@ const STUDENT_PROFILE = {
   course: 'B.Tech Computer Science',
   graduation_year: 2027,
 };
-
-// 64 lower-hex chars each, clearly patterned/fake (not derived from any real
-// document), following the certificate_hash CHECK constraint.
-const DEMO_CERTIFICATES = [
-  {
-    certificate_number: 'SKIT-2027-4NZP8K2R7WXJ',
-    title: 'Bachelor of Technology in Computer Science',
-    certificate_type: 'DEGREE',
-    issue_date: '2025-06-15',
-    certificate_hash: 'ab00'.repeat(16),
-    template_version: 'v1',
-    attributes: { seed: true, division: 'First Class with Distinction' },
-  },
-  {
-    certificate_number: 'SKIT-2027-9HDT3F6MQCVA',
-    title: 'Certificate of Completion - Advanced Web Development',
-    certificate_type: 'COURSE_COMPLETION',
-    issue_date: '2025-11-20',
-    certificate_hash: 'cd11'.repeat(16),
-    template_version: 'v1',
-    attributes: { seed: true, hours: 40 },
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Helpers: each returns { id, created } so the summary can report accurately.
@@ -197,41 +177,6 @@ async function upsertStudent(client, userId, institutionId, profile) {
   return { id: after.rows[0].id, created: true };
 }
 
-async function upsertCertificate(client, cert, studentId, institutionId, issuedByUserId) {
-  const existing = await client.query(
-    'SELECT certificate_id AS id FROM certificate WHERE certificate_number = $1',
-    [cert.certificate_number]
-  );
-  if (existing.rows.length > 0) {
-    return { id: existing.rows[0].id, created: false };
-  }
-  await client.query(
-    `INSERT INTO certificate (
-       student_id, institution_id, issued_by, certificate_number, title,
-       certificate_type, issue_date, attributes, certificate_hash,
-       template_version, status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACTIVE')
-     ON CONFLICT (certificate_number) DO NOTHING`,
-    [
-      studentId,
-      institutionId,
-      issuedByUserId,
-      cert.certificate_number,
-      cert.title,
-      cert.certificate_type,
-      cert.issue_date,
-      cert.attributes,
-      cert.certificate_hash,
-      cert.template_version,
-    ]
-  );
-  const after = await client.query(
-    'SELECT certificate_id AS id FROM certificate WHERE certificate_number = $1',
-    [cert.certificate_number]
-  );
-  return { id: after.rows[0].id, created: true };
-}
-
 async function seed() {
   const databaseUrl = getDatabaseUrl();
   const client = new Client({ connectionString: databaseUrl });
@@ -275,17 +220,6 @@ async function seed() {
 
     const student = await upsertStudent(client, studentUser.id, institution.id, STUDENT_PROFILE);
     summary.push([`student:${STUDENT_PROFILE.enrollment_number}`, student.created]);
-
-    for (const cert of DEMO_CERTIFICATES) {
-      const result = await upsertCertificate(
-        client,
-        cert,
-        student.id,
-        institution.id,
-        institutionStaff.id
-      );
-      summary.push([`certificate:${cert.certificate_number}`, result.created]);
-    }
 
     console.log('Seed summary:');
     let insertedCount = 0;

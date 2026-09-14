@@ -3,7 +3,7 @@
  * and the web client (same-shape client-side feedback). One schema per endpoint (LLD §5).
  */
 import { z } from 'zod';
-import { CERTIFICATE_TYPE, CERT_STATE, VERIFICATION_METHOD } from './constants.js';
+import { CERTIFICATE_TYPE, CERT_STATE, ROLE, VERIFICATION_METHOD } from './constants.js';
 
 /** Certificate number format: <INSTITUTION_CODE>-<YYYY>-<12-char Crockford Base32>. */
 export const certificateNumberSchema = z
@@ -78,6 +78,41 @@ export const certificateIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+export const joinRequestIdParamSchema = z.object({
+  requestId: z.string().uuid(),
+});
+
 export const certificateNumberParamSchema = z.object({
   certificateNumber: certificateNumberSchema,
 });
+
+/** `<INSTITUTION_CODE>` shape, matching the `institution.institution_code` DB constraint. */
+export const institutionCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9]{3,8}$/, 'Use 3-8 letters/numbers, e.g. SKIT.');
+
+/**
+ * One-time role choice a brand-new signed-up user submits (see
+ * `POST /api/v1/auth/choose-role`). A student needs nothing further; an
+ * institution provides its name and a short code — a new institution row is
+ * created if that code doesn't exist yet, or the account joins the existing
+ * institution with that code if it does.
+ */
+export const chooseRoleRequestSchema = z.discriminatedUnion('role', [
+  z.object({ role: z.literal(ROLE.STUDENT) }),
+  z.object({
+    role: z.literal(ROLE.INSTITUTION),
+    institutionName: z
+      .string()
+      .trim()
+      .min(2, "Enter your institution's full name.")
+      .max(200, "Enter your institution's full name."),
+    institutionCode: institutionCodeSchema,
+    // Required only when joining an institution that already exists (checked
+    // at the route layer, since that depends on a DB lookup, not something a
+    // static schema can express) — omitted when creating a brand-new one.
+    accessCode: z.string().trim().max(64).optional(),
+  }),
+]);

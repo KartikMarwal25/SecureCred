@@ -4,6 +4,8 @@ import { issuanceRequestSchema, CERTIFICATE_TYPE, ERROR_CODE } from '@securecred
 import { issueCertificate, ApiError } from '../../api/client.js';
 import { Button } from '../../components/Button.jsx';
 import { FieldError } from '../../components/FieldError.jsx';
+import { useAuth } from '../../auth/useAuth.js';
+import { BuildingIcon } from '../../components/icons/BuildingIcon.jsx';
 
 const CERTIFICATE_TYPE_LABELS = {
   [CERTIFICATE_TYPE.DEGREE]: 'Degree',
@@ -43,6 +45,7 @@ function inputClassName(hasError) {
 
 export function IssuePage() {
   const navigate = useNavigate();
+  const auth = useAuth();
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
@@ -125,41 +128,65 @@ export function IssuePage() {
     <div className="flex flex-col gap-24">
       <h1 className="text-[24px] font-bold leading-[32px] text-ink">Issue a certificate</h1>
 
-      <div className="rounded-[6px] border border-warn bg-warn-bg p-16">
-        <p className="prose-copy text-[14px] leading-[20px] text-warn">
-          Once a certificate is issued and confirmed on the blockchain, it cannot be edited or
-          deleted. If a detail is wrong afterwards, the only options are to revoke it and issue a
-          corrected certificate separately.
-        </p>
-      </div>
+      <div className="flex flex-col gap-24 lg:flex-row lg:items-start">
+        <div className="flex flex-col gap-24 lg:w-[320px] lg:shrink-0">
+          <div className="rounded-[16px] border border-warn bg-warn-bg p-16 shadow-xs">
+            <p className="prose-copy text-[14px] leading-[20px] text-warn">
+              Once a certificate is issued and confirmed on the blockchain, it cannot be edited or
+              deleted. If a detail is wrong afterwards, the only options are to revoke it and
+              issue a corrected certificate separately.
+            </p>
+          </div>
 
-      {showSummary ? (
-        <div
-          ref={summaryRef}
-          tabIndex={-1}
-          role="alert"
-          className="rounded-[6px] border border-bad bg-bad-bg p-16"
-        >
-          <p className="text-[16px] font-bold leading-[24px] text-bad">
-            {submitError ||
-              `${errorEntries.length} field${errorEntries.length === 1 ? '' : 's'} need attention before this can be issued.`}
-          </p>
-          {errorEntries.length > 0 ? (
-            <ul className="mt-8 flex flex-col gap-4">
-              {errorEntries.map(([field, message]) => (
-                <li key={field} className="text-[14px] leading-[20px] text-bad">
-                  <a href={`#field-${field}`} className="font-bold underline">
-                    {FIELD_LABELS[field] || field}
-                  </a>
-                  : {message}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <div className="rounded-[16px] border border-edge bg-paper p-16 shadow-xs">
+            <div className="flex items-center gap-12">
+              <span className="flex h-40 w-40 shrink-0 items-center justify-center rounded-[8px] bg-brand text-paper">
+                <BuildingIcon className="h-20 w-20" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[12px] font-bold uppercase leading-[16px] tracking-[0.4px] text-faint">
+                  Issuing as
+                </p>
+                <p className="truncate text-[16px] font-bold leading-[24px] text-ink">
+                  {auth.email || 'This institution'}
+                </p>
+              </div>
+            </div>
+            <p className="mt-12 text-[14px] leading-[20px] text-faint">
+              This certificate will be recorded under your institution&rsquo;s registered issuer
+              identity and become independently verifiable once anchored.
+            </p>
+          </div>
         </div>
-      ) : null}
 
-      <form onSubmit={handleSubmit} noValidate>
+        <div className="min-w-0 flex-1 rounded-[16px] border border-edge bg-paper p-16 shadow-sm sm:p-24">
+          {showSummary ? (
+            <div
+              ref={summaryRef}
+              tabIndex={-1}
+              role="alert"
+              className="mb-24 rounded-[12px] border border-bad bg-bad-bg p-16"
+            >
+              <p className="text-[16px] font-bold leading-[24px] text-bad">
+                {submitError ||
+                  `${errorEntries.length} field${errorEntries.length === 1 ? '' : 's'} need attention before this can be issued.`}
+              </p>
+              {errorEntries.length > 0 ? (
+                <ul className="mt-8 flex flex-col gap-4">
+                  {errorEntries.map(([field, message]) => (
+                    <li key={field} className="text-[14px] leading-[20px] text-bad">
+                      <a href={`#field-${field}`} className="font-bold underline">
+                        {FIELD_LABELS[field] || field}
+                      </a>
+                      : {message}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
+          <form onSubmit={handleSubmit} noValidate>
         <div className="grid grid-cols-1 gap-16 md:grid-cols-2">
           <div>
             <label htmlFor="field-holderName" className="text-[12px] font-bold uppercase leading-[16px] tracking-[0.4px] text-body">
@@ -310,7 +337,9 @@ export function IssuePage() {
             {submitting ? 'Issuing…' : 'Issue credential'}
           </Button>
         </div>
-      </form>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

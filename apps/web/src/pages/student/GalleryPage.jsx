@@ -6,6 +6,8 @@ import { CredentialCard } from '../../components/CredentialCard.jsx';
 import { Skeleton } from '../../components/Skeleton.jsx';
 import { Button } from '../../components/Button.jsx';
 import { EmptyState } from '../../components/EmptyState.jsx';
+import { Logo } from '../../components/Logo.jsx';
+import { BackButton } from '../../components/BackButton.jsx';
 
 // A holder never sees a credential before it is confirmed, so pre-ACTIVE
 // states are simply never shown here.
@@ -44,37 +46,45 @@ export function GalleryPage() {
   }, [load]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-[720px] flex-col gap-24 px-12 py-32 sm:px-16 md:px-24">
-      <div>
-        <h1 className="text-[24px] font-bold leading-[32px] text-ink">Your credentials</h1>
-        <p className="mt-8 text-[16px] leading-[24px] text-muted">
-          Issued to {auth.email}. New credentials appear here automatically.
-        </p>
-      </div>
-
-      {loading ? (
-        <div className="flex flex-col gap-12">
-          <Skeleton className="h-[120px] w-full" />
-          <Skeleton className="h-[120px] w-full" />
+    <div className="min-h-screen" style={{ backgroundImage: 'var(--gradient-hero)' }}>
+      <header className="border-b border-edge bg-paper/80 px-12 py-16 backdrop-blur sm:px-16 md:px-24">
+        <div className="mx-auto flex max-w-[720px] items-center gap-16">
+          <BackButton label="" className="!gap-0" />
+          <Logo />
         </div>
-      ) : error ? (
-        <EmptyState
-          title="Your credentials could not be loaded. Check your connection and try again."
-          action={
-            <Button variant="secondary" onClick={load}>
-              Try again
-            </Button>
-          }
-        />
-      ) : credentials.length === 0 ? (
-        <EmptyState title="No credentials have been issued to you yet." />
-      ) : (
-        <ul className="flex flex-col gap-16">
-          {credentials.map((credential) => (
-            <CredentialCard key={credential.certificateId} credential={credential} />
-          ))}
-        </ul>
-      )}
-    </main>
+      </header>
+      <main className="mx-auto flex max-w-[720px] flex-col gap-24 px-12 py-32 sm:px-16 md:px-24">
+        <div className="animate-fade-in-up">
+          <h1 className="text-[24px] font-bold leading-[32px] text-ink">Your credentials</h1>
+          <p className="mt-8 text-[16px] leading-[24px] text-muted">
+            Issued to {auth.email}. New credentials appear here automatically.
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col gap-12">
+            <Skeleton className="h-[120px] w-full rounded-[16px]" />
+            <Skeleton className="h-[120px] w-full rounded-[16px]" />
+          </div>
+        ) : error ? (
+          <EmptyState
+            title="Your credentials could not be loaded. Check your connection and try again."
+            action={
+              <Button variant="secondary" onClick={load}>
+                Try again
+              </Button>
+            }
+          />
+        ) : credentials.length === 0 ? (
+          <EmptyState title="No credentials have been issued to you yet." />
+        ) : (
+          <ul className="stagger-children flex flex-col gap-16">
+            {credentials.map((credential) => (
+              <CredentialCard key={credential.certificateId} credential={credential} />
+            ))}
+          </ul>
+        )}
+      </main>
+    </div>
   );
 }

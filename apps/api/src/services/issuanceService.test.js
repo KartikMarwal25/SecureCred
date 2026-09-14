@@ -34,7 +34,9 @@ const makeDeps = (overrides = {}) => {
     fileRepo: { insert: jest.fn().mockResolvedValue({ file_id: 'file-1' }) },
     txRepo: { insert: jest.fn().mockResolvedValue({ transaction_id: 'tx-1' }) },
     userRepo: {
-      findStudentByEnrollment: jest.fn().mockResolvedValue({ studentId: 'student-1', userId: 'student-user-1' }),
+      resolveOrCreateStudentForIssuance: jest
+        .fn()
+        .mockResolvedValue({ studentId: 'student-1', userId: 'student-user-1', fullName: 'Asha Verma', email: 'asha@example.com' }),
     },
     institutionRepo: {
       findById: jest.fn().mockResolvedValue({ institution_id: 'inst-1', institution_code: 'SKIT', institution_name: 'SKIT College' }),
@@ -88,14 +90,44 @@ describe('issuanceService.issue (pipeline orchestration, substitute dependencies
     await expect(service.issue({ ...baseInput(), issueDate: '2099-01-01' }, actor)).rejects.toMatchObject({
       code: ERROR_CODE.E_VALIDATION,
     });
-    expect(deps.userRepo.findStudentByEnrollment).not.toHaveBeenCalled();
+    expect(deps.userRepo.resolveOrCreateStudentForIssuance).not.toHaveBeenCalled();
   });
 
-  it('rejects when the holder cannot be resolved', async () => {
-    const { deps } = makeDeps({ userRepo: { findStudentByEnrollment: jest.fn().mockResolvedValue(undefined) } });
+  it('auto-provisions a student record on first-ever issuance to a new holder', async () => {
+    const resolveOrCreateStudentForIssuance = jest
+      .fn()
+      .mockResolvedValue({ studentId: 'new-student-1', userId: 'new-user-1', fullName: 'Asha Verma', email: 'asha@example.com' });
+    const { deps } = makeDeps({ userRepo: { resolveOrCreateStudentForIssuance } });
     const service = createIssuanceService(deps);
 
-    await expect(service.issue(baseInput(), actor)).rejects.toMatchObject({ code: ERROR_CODE.E_HOLDER_NOT_FOUND });
+    const result = await service.issue(baseInput(), actor);
+
+    expect(resolveOrCreateStudentForIssuance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        institutionId: 'inst-1',
+        enrollmentNumber: 'ENR-001',
+        holderEmail: 'asha@example.com',
+        holderName: 'Asha Verma',
+        course: 'Computer Science & Engineering',
+      }),
+      expect.anything(),
+    );
+    expect(deps.certificateRepo.insertPending).toHaveBeenCalledWith(
+      expect.objectContaining({ studentId: 'new-student-1' }),
+      expect.anything(),
+    );
+    expect(result.status).toBe(CERT_STATE.ANCHORING);
+  });
+
+  it('propagates a conflict when the holder email is already a student at a different institution', async () => {
+    const conflict = Object.assign(new Error('already registered elsewhere'), { code: ERROR_CODE.E_VALIDATION });
+    const { deps } = makeDeps({
+      userRepo: { resolveOrCreateStudentForIssuance: jest.fn().mockRejectedValue(conflict) },
+    });
+    const service = createIssuanceService(deps);
+
+    await expect(service.issue(baseInput(), actor)).rejects.toThrow('already registered elsewhere');
+    expect(deps.certificateRepo.insertPending).not.toHaveBeenCalled();
   });
 
   it('on a certificate_hash unique violation, throws E_DUPLICATE_CERTIFICATE with the existing certificate in context', async () => {

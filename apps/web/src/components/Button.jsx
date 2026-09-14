@@ -1,12 +1,16 @@
 export const BUTTON_VARIANT_CLASSES = {
-  primary: 'bg-brand text-paper border border-brand hover:opacity-90',
-  secondary: 'bg-paper text-brand border border-edge-ctl hover:bg-surface',
+  primary:
+    'bg-brand text-paper border border-brand shadow-sm hover:-translate-y-0.5 hover:shadow-md active:translate-y-0',
+  secondary:
+    'bg-paper text-brand border border-edge-ctl hover:-translate-y-0.5 hover:bg-surface hover:shadow-sm active:translate-y-0',
+  accent:
+    'border border-transparent text-ink shadow-sm hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 [background-image:var(--gradient-accent)]',
   destructive: 'bg-paper text-bad border border-bad hover:bg-bad-bg',
   destructiveFilled: 'bg-bad text-paper border border-bad hover:opacity-90',
 };
 
 export const BUTTON_BASE_CLASSES =
-  'inline-flex min-h-[44px] items-center justify-center gap-8 rounded-[4px] px-16 py-8 text-[16px] font-bold leading-[24px] transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex min-h-[44px] items-center justify-center gap-8 rounded-[8px] px-16 py-8 text-[16px] font-bold leading-[24px] transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none';
 
 /** For non-<button> elements (Link, <a download>) that must look like a Button. */
 export function buttonClassName(variant = 'secondary', className = '') {

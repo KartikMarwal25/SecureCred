@@ -8,8 +8,13 @@ import { StateChip } from '../../components/StateChip.jsx';
 import { Pagination } from '../../components/Pagination.jsx';
 import { EmptyState } from '../../components/EmptyState.jsx';
 import { Skeleton } from '../../components/Skeleton.jsx';
+import { Reveal } from '../../components/Reveal.jsx';
+import { StatCard } from '../../components/StatCard.jsx';
 import { Button, buttonClassName } from '../../components/Button.jsx';
 import { formatDate } from '../../lib/formatDate.js';
+import { ShieldIcon } from '../../components/icons/ShieldIcon.jsx';
+import { ClockIcon } from '../../components/icons/ClockIcon.jsx';
+import { BarredCircleIcon } from '../../components/icons/BarredCircleIcon.jsx';
 
 const PAGE_SIZE = 20;
 const STATE_OPTIONS = Object.values(CERT_STATE);
@@ -151,6 +156,38 @@ export function RegistryPage() {
         </p>
       </div>
 
+      {summary ? (
+        <div className="stagger-children grid grid-cols-1 gap-16 sm:grid-cols-3">
+          <StatCard
+            icon={<ShieldIcon className="h-20 w-20 text-paper" />}
+            label="Total issued"
+            value={summary.total.count}
+            suffix={summary.total.isLowerBound ? '+' : ''}
+            tone="brand"
+          />
+          <StatCard
+            icon={<ClockIcon className="h-20 w-20 text-brand" />}
+            label="Awaiting anchor"
+            value={summary.awaitingAnchor.count}
+            suffix={summary.awaitingAnchor.isLowerBound ? '+' : ''}
+            tone="surface"
+          />
+          <StatCard
+            icon={<BarredCircleIcon className="h-20 w-20 text-brand" />}
+            label="Revoked"
+            value={summary.revoked.count}
+            suffix={summary.revoked.isLowerBound ? '+' : ''}
+            tone="surface"
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-16 sm:grid-cols-3">
+          <Skeleton className="h-[112px] w-full rounded-[16px]" />
+          <Skeleton className="h-[112px] w-full rounded-[16px]" />
+          <Skeleton className="h-[112px] w-full rounded-[16px]" />
+        </div>
+      )}
+
       <form onSubmit={handleSearchSubmit} className="flex flex-col gap-8 sm:flex-row">
         <label htmlFor="registry-search" className="sr-only">
           Search certificates
@@ -168,7 +205,7 @@ export function RegistryPage() {
         </Button>
       </form>
 
-      <div className="lg:flex lg:items-start lg:gap-24">
+      <Reveal className="lg:flex lg:items-start lg:gap-24" threshold={0}>
         <aside className="lg:w-[240px] lg:shrink-0">
           <button
             type="button"
@@ -293,7 +330,7 @@ export function RegistryPage() {
             </div>
           )}
         </div>
-      </div>
+      </Reveal>
     </div>
   );
 }

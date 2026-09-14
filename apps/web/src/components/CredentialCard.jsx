@@ -2,8 +2,9 @@ import { Link } from 'react-router-dom';
 import { CERT_STATE } from '@securecred/shared';
 import { StateChip } from './StateChip.jsx';
 import { buttonClassName } from './Button.jsx';
+import { CertificateDocumentButton } from './CertificateDocumentButton.jsx';
 import { formatDate } from '../lib/formatDate.js';
-import { getCertificateDocumentUrl } from '../api/client.js';
+import { BuildingIcon } from './icons/BuildingIcon.jsx';
 
 /**
  * A gallery card on the student "Your credentials" screen. The revoked
@@ -12,14 +13,18 @@ import { getCertificateDocumentUrl } from '../api/client.js';
 export function CredentialCard({ credential }) {
   const { certificateId, title, institutionName, issueDate, certificateNumber, status, revocation } =
     credential;
-  const documentUrl = getCertificateDocumentUrl(certificateNumber);
 
   return (
-    <li className="flex flex-col gap-12 rounded-[6px] border border-edge bg-paper p-16">
-      <div className="flex flex-wrap items-start justify-between gap-8">
-        <div className="min-w-0">
-          <p className="text-[18px] font-bold leading-[26px] text-ink">{title}</p>
-          <p className="text-[14px] leading-[20px] text-muted">{institutionName}</p>
+    <li className="animate-fade-in-up flex flex-col gap-12 rounded-[16px] border border-edge bg-paper p-16 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-md sm:p-24">
+      <div className="flex flex-wrap items-start justify-between gap-12">
+        <div className="flex min-w-0 items-start gap-12">
+          <span className="flex h-40 w-40 shrink-0 items-center justify-center rounded-[8px] bg-surface text-brand">
+            <BuildingIcon className="h-20 w-20" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[18px] font-bold leading-[26px] text-ink">{title}</p>
+            <p className="text-[14px] leading-[20px] text-muted">{institutionName}</p>
+          </div>
         </div>
         <StateChip state={status} />
       </div>
@@ -41,10 +46,8 @@ export function CredentialCard({ credential }) {
         </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-8">
-        <a href={documentUrl} className={buttonClassName('secondary')}>
-          Download
-        </a>
+      <div className="flex flex-wrap items-start gap-8">
+        <CertificateDocumentButton certificateNumber={certificateNumber} status={status} label="Download" />
         <Link to={`/me/credential/${certificateId}`} className={buttonClassName('secondary')}>
           Share
         </Link>

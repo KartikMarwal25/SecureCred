@@ -51,13 +51,13 @@ export function Modal({ isOpen, onClose, labelledBy, children }) {
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] px-16">
+    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] px-16">
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-[6px] border border-edge bg-paper p-24 shadow-[var(--shadow-dialog)]"
+        className="animate-scale-in max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-[16px] border border-edge bg-paper p-24 shadow-[var(--shadow-dialog)]"
       >
         {children}
       </div>

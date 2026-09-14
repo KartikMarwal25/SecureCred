@@ -34,12 +34,19 @@ const HOLDER_JOIN = `
   JOIN user_account u ON u.user_id = s.user_id
 `;
 
-/** Columns safe to hand to an anonymous public verifier (no internal ops fields). */
+/**
+ * Columns safe to hand to an anonymous public verifier (no internal ops
+ * fields). Includes the holder's display name and the institution's name —
+ * the `/document` endpoint already serves the full PDF (which prints both)
+ * to the same anonymous caller for the same certificate number, so
+ * withholding them from this JSON view added a click of friction without
+ * any real privacy benefit.
+ */
 const PUBLIC_COLUMNS = `
-  certificate_id, certificate_number, title, certificate_type, issue_date,
-  institution_id, student_id, certificate_hash, template_version,
-  blockchain_cert_id, status, last_chain_check_at, last_confirmed_chain_state,
-  created_at
+  c.certificate_id, c.certificate_number, c.title, c.certificate_type, c.issue_date,
+  c.institution_id, c.student_id, c.certificate_hash, c.template_version,
+  c.blockchain_cert_id, c.status, c.last_chain_check_at, c.last_confirmed_chain_state,
+  c.created_at, u.full_name AS holder_name, i.institution_name AS institution_name
 `;
 
 /** Allow-list of columns `updateStatus` is permitted to set alongside `status`. */
@@ -191,7 +198,11 @@ export const createCertificateRepo = ({ pool }) => {
    */
   const findByCertificateNumber = async (certificateNumber, client) => {
     const { rows } = await exec(client).query(
-      `SELECT ${PUBLIC_COLUMNS} FROM certificate WHERE certificate_number = $1`,
+      `SELECT ${PUBLIC_COLUMNS} FROM certificate c
+       JOIN student s ON s.student_id = c.student_id
+       JOIN user_account u ON u.user_id = s.user_id
+       JOIN institution i ON i.institution_id = c.institution_id
+       WHERE c.certificate_number = $1`,
       [certificateNumber],
     );
     return rows[0];

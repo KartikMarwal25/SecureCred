@@ -23,6 +23,7 @@ import { createTxRepo } from './repositories/tx.repo.js';
 import { createRevocationRepo } from './repositories/revocation.repo.js';
 import { createUserRepo } from './repositories/user.repo.js';
 import { createInstitutionRepo } from './repositories/institution.repo.js';
+import { createInstitutionJoinRequestRepo } from './repositories/institutionJoinRequest.repo.js';
 import { createAuditRepo } from './repositories/audit.repo.js';
 import { createVerificationLogRepo } from './repositories/verificationLog.repo.js';
 import { inTransaction } from './repositories/txHelper.js';
@@ -51,7 +52,10 @@ import qrLib from 'qrcode';
  * @returns {object} Frozen container consumed by app.js/server.js.
  */
 export const createContainer = () => {
-  const pool = new pg.Pool({ connectionString: config.databaseUrl });
+  const pool = new pg.Pool({
+    connectionString: config.databaseUrl,
+    ssl: config.databaseSsl ? { rejectUnauthorized: config.databaseSslRejectUnauthorized } : undefined,
+  });
   const withTransaction = (fn) => inTransaction(pool, fn);
 
   const provider = createProvider(config.rpcUrl);
@@ -64,6 +68,7 @@ export const createContainer = () => {
   const revocationRepo = createRevocationRepo({ pool });
   const userRepo = createUserRepo({ pool });
   const institutionRepo = createInstitutionRepo({ pool });
+  const institutionJoinRequestRepo = createInstitutionJoinRequestRepo({ pool });
   const auditRepo = createAuditRepo({ pool });
   const verificationLogRepo = createVerificationLogRepo({ pool, logger });
 
@@ -112,7 +117,7 @@ export const createContainer = () => {
     withTransaction,
   });
 
-  const requireAuth = createRequireAuth({ clerkAdapter });
+  const requireAuth = createRequireAuth({ clerkAdapter, userRepo, config });
 
   const rateLimiters = {
     issuanceLimiter: createRateLimiter({
@@ -155,6 +160,7 @@ export const createContainer = () => {
       revocationRepo,
       userRepo,
       institutionRepo,
+      institutionJoinRequestRepo,
       auditRepo,
       verificationLogRepo,
     }),

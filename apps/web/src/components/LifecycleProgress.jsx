@@ -79,16 +79,34 @@ function stageStatus(config, index) {
 
 export function LifecycleProgress({ state, blockNumber, revokedAt, onRetry }) {
   const config = buildConfig(state, { blockNumber, revokedAt });
+  const completeCount = config.failed
+    ? 0
+    : STAGE_LABELS.reduce((count, _label, index) => count + (stageStatus(config, index) === 'complete' ? 1 : 0), 0);
+  const fillPercent =
+    STAGE_LABELS.length > 1 ? (completeCount / (STAGE_LABELS.length - 1)) * 100 : 0;
 
   return (
-    <div className="rounded-[6px] border border-edge bg-surface p-16">
-      <ol className="flex items-start gap-8">
+    <div className="rounded-[16px] border border-edge bg-surface p-16 shadow-xs">
+      <ol className="relative flex items-start gap-8">
+        <div
+          className="pointer-events-none absolute left-0 right-0 top-12 -z-10 h-2 rounded-full bg-edge"
+          style={{
+            marginLeft: `${100 / (STAGE_LABELS.length * 2)}%`,
+            marginRight: `${100 / (STAGE_LABELS.length * 2)}%`,
+          }}
+          aria-hidden="true"
+        >
+          <div
+            className="h-full rounded-full bg-ok transition-[width] duration-500 ease-out"
+            style={{ width: `${fillPercent}%` }}
+          />
+        </div>
         {STAGE_LABELS.map((label, index) => {
           const status = stageStatus(config, index);
           return (
             <li key={label} className="flex flex-1 flex-col items-center gap-8 text-center">
               <span
-                className={`flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-2 ${
+                className={`flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-300 ${
                   status === 'complete'
                     ? 'border-ok bg-ok text-paper'
                     : status === 'in-progress'

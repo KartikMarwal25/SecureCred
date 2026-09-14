@@ -7,7 +7,7 @@
 export function DataTable({ columns, rows, getRowKey, renderActions }) {
   return (
     <div>
-      <div className="hidden overflow-x-auto md:block">
+      <div className="hidden overflow-x-auto rounded-[16px] border border-edge bg-paper shadow-xs md:block">
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="border-b border-edge">
@@ -24,7 +24,10 @@ export function DataTable({ columns, rows, getRowKey, renderActions }) {
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={getRowKey(row)} className={index % 2 === 1 ? 'bg-zebra' : undefined}>
+              <tr
+                key={getRowKey(row)}
+                className={`transition-colors duration-150 hover:bg-surface ${index % 2 === 1 ? 'bg-zebra' : ''}`}
+              >
                 {columns.map((col) => (
                   <td
                     key={col.key}
@@ -46,7 +49,10 @@ export function DataTable({ columns, rows, getRowKey, renderActions }) {
 
       <ul className="flex flex-col gap-12 md:hidden">
         {rows.map((row) => (
-          <li key={getRowKey(row)} className="rounded-[6px] border border-edge bg-paper p-16">
+          <li
+            key={getRowKey(row)}
+            className="rounded-[16px] border border-edge bg-paper p-16 shadow-xs transition-colors duration-150 hover:bg-surface"
+          >
             <dl className="flex flex-col gap-8">
               {columns.map((col) => (
                 <div key={col.key} className="flex items-baseline justify-between gap-8">

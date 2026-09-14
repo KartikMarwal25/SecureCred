@@ -112,7 +112,6 @@ export function QrScanner({ onDecode, onClose, onTypeInstead }) {
         </div>
       ) : (
         <div className="relative mx-auto aspect-square w-full max-w-[360px] overflow-hidden rounded-[6px] bg-ink">
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live scanner preview, no captions apply */}
           <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
           <div
             className="pointer-events-none absolute inset-24 rounded-[6px] border-2 border-dashed border-accent"

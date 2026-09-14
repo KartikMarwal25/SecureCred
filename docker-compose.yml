@@ -1,20 +1,26 @@
 # Full local stack for SecureCred — one command to see the whole system
-# running: PostgreSQL, a local Hardhat chain, the deployed smart contract,
-# the API, the background worker, and the web frontend.
+# running: PostgreSQL, the API, the background worker, and the web frontend.
 #
 #   docker compose up --build
 #
-# Clerk and Pinata are intentionally left unset below so the API's built-in
-# dev-mode fallbacks activate (see apps/api/src/adapters/clerk.adapter.js and
-# pinata.adapter.js) — the whole issuance -> anchor -> verify -> revoke flow
-# works with zero third-party accounts. Set CLERK_*/PINATA_JWT as real
-# environment overrides (e.g. in a local .env consumed by `docker compose`)
-# to switch those two adapters to their real, fully-implemented paths.
+# Every value below that isn't hardcoded (Clerk keys, Pinata JWT, and —
+# since this stack anchors straight to the real Polygon Amoy testnet, not a
+# disposable local chain — CHAIN_NETWORK/RPC_URL/CHAIN_ID/CONTRACT_ADDRESS/
+# CUSTODIAN_PRIVATE_KEY) is read from a repo-root `.env` file (docker
+# compose loads that automatically for ${VAR} substitution). Clerk/Pinata
+# default to empty if `.env` doesn't set them, which activates the API's
+# built-in dev-mode fallbacks (see apps/api/src/adapters/clerk.adapter.js
+# and pinata.adapter.js).
 #
-# CUSTODIAN_PRIVATE_KEY below is Hardhat's well-known, publicly-documented
-# default account #0 test key — funded with 10000 test ETH on any Hardhat
-# node and worthless anywhere else. Never reuse a well-known test key for
-# anything real.
+# There used to be a separate, throwaway local Hardhat chain here (see
+# docker/chain.Dockerfile, still in the repo but unused) — every restart of
+# that container wiped every certificate anchored on it, since Hardhat's
+# node keeps its whole chain state in memory with nothing written to disk.
+# Anchoring straight to the real, persistent Amoy testnet instead means
+# nothing issued locally is ever lost to a Docker restart again — gas cost
+# is negligible (well under a cent per certificate at Amoy's typical gas
+# price). `contracts/deployments/` is bind-mounted read-only from the host
+# so the containers see the real deployment record already committed there.
 
 services:
   postgres:
@@ -31,37 +37,6 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
-
-  chain:
-    build:
-      context: .
-      dockerfile: docker/chain.Dockerfile
-    ports:
-      - '8545:8545'
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          "wget -q -O- --header='Content-Type: application/json' --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}' http://127.0.0.1:8545 | grep -q result",
-        ]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-
-  deploy-contract:
-    build:
-      context: .
-      dockerfile: docker/chain.Dockerfile
-    depends_on:
-      chain:
-        condition: service_healthy
-    environment:
-      CHAIN_RPC_URL: http://chain:8545
-      CUSTODIAN_PRIVATE_KEY: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
-      CUSTODIAN_ADDRESS: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'
-    volumes:
-      - contract_deployments:/app/contracts/deployments
-    command: ['npx', 'hardhat', 'run', 'scripts/deploy.js', '--network', 'dockerchain']
 
   migrate:
     build:
@@ -92,25 +67,25 @@ services:
     depends_on:
       seed:
         condition: service_completed_successfully
-      deploy-contract:
-        condition: service_completed_successfully
     ports:
       - '4000:4000'
     volumes:
-      - contract_deployments:/app/contracts/deployments:ro
+      - ./contracts/deployments:/app/contracts/deployments:ro
     environment:
       NODE_ENV: development
       PORT: 4000
       VERIFY_BASE_URL: http://localhost:5173/verify
       CORS_ALLOWED_ORIGINS: http://localhost:5173
       DATABASE_URL: postgres://securecred_app:securecred_dev_password@postgres:5432/securecred
-      CLERK_SECRET_KEY: ''
-      PINATA_JWT: ''
-      CHAIN_NETWORK: dockerchain
-      RPC_URL: http://chain:8545
-      CHAIN_ID: '1337'
-      CONFIRMATION_DEPTH: '1'
-      CUSTODIAN_PRIVATE_KEY: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      CLERK_WEBHOOK_SECRET: ${CLERK_WEBHOOK_SECRET:-}
+      PINATA_JWT: ${PINATA_JWT:-}
+      CHAIN_NETWORK: ${CHAIN_NETWORK}
+      RPC_URL: ${RPC_URL}
+      CHAIN_ID: ${CHAIN_ID}
+      CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}
+      CONFIRMATION_DEPTH: ${CONFIRMATION_DEPTH:-1}
+      CUSTODIAN_PRIVATE_KEY: ${CUSTODIAN_PRIVATE_KEY}
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O-', 'http://127.0.0.1:4000/api/v1/health']
       interval: 5s
@@ -125,15 +100,15 @@ services:
       api:
         condition: service_healthy
     volumes:
-      - contract_deployments:/app/contracts/deployments:ro
+      - ./contracts/deployments:/app/contracts/deployments:ro
     environment:
       NODE_ENV: development
       DATABASE_URL: postgres://securecred_app:securecred_dev_password@postgres:5432/securecred
-      CHAIN_NETWORK: dockerchain
-      RPC_URL: http://chain:8545
-      CHAIN_ID: '1337'
-      CONFIRMATION_DEPTH: '1'
-      CUSTODIAN_PRIVATE_KEY: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+      CHAIN_NETWORK: ${CHAIN_NETWORK}
+      RPC_URL: ${RPC_URL}
+      CHAIN_ID: ${CHAIN_ID}
+      CONFIRMATION_DEPTH: ${CONFIRMATION_DEPTH:-1}
+      CUSTODIAN_PRIVATE_KEY: ${CUSTODIAN_PRIVATE_KEY}
       STALL_THRESHOLD_SEC: '120'
       RECONCILE_INTERVAL_SEC: '60'
 
@@ -143,7 +118,7 @@ services:
       dockerfile: docker/web.Dockerfile
       args:
         VITE_API_BASE_URL: http://localhost:4000/api/v1
-        VITE_CLERK_PUBLISHABLE_KEY: ''
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
     depends_on:
       api:
         condition: service_healthy
@@ -152,4 +127,3 @@ services:
 
 volumes:
   securecred_pgdata:
-  contract_deployments:

@@ -32,12 +32,26 @@ export const createWebhooksRouter = ({ clerkAdapter, userRepo, logger }) => {
     try {
       const { type, data } = payload;
       if (type === 'user.created' || type === 'user.updated') {
-        const roleName = data.public_metadata?.role === ROLE.STUDENT ? ROLE.STUDENT : ROLE.INSTITUTION;
-        const institutionId = data.public_metadata?.institutionId ?? null;
         const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ') || data.username || 'Unknown';
         const email = data.email_addresses?.[0]?.email_address ?? null;
-        // Idempotent on clerk_user_id — safe for Clerk to retry this webhook.
-        await userRepo.upsertFromClerk(data.id, fullName, email, roleName, institutionId);
+        const metadataRole = data.public_metadata?.role;
+
+        if (metadataRole === ROLE.INSTITUTION) {
+          // An institution account is provisioned out-of-band (see
+          // db/seeds/seed.js) by explicitly setting public_metadata
+          // {role: 'institution', institutionId: '<uuid>'} on the Clerk
+          // user first — this is never the default for an unrecognized
+          // sign-up, since it grants certificate-issuance privileges.
+          const institutionId = data.public_metadata?.institutionId ?? null;
+          await userRepo.upsertFromClerk(data.id, fullName, email, ROLE.INSTITUTION, institutionId);
+        } else {
+          // Everyone else (no metadata role, or explicitly 'student') is
+          // self-service and defaults to student — matching the lazy
+          // provisioning in auth.mw.js, and using the same email-keyed
+          // linking so this webhook and that fallback can't create
+          // duplicate rows for the same person.
+          await userRepo.provisionOrLinkSelfServiceUser(data.id, email, fullName);
+        }
       }
       res.status(200).json({ status: 'ok' });
     } catch (err) {

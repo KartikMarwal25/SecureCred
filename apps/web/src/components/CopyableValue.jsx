@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CopyIcon } from './icons/CopyIcon.jsx';
+import { CheckIcon } from './icons/CheckIcon.jsx';
 import { truncateMiddle } from '../lib/truncateMiddle.js';
 
 /**
@@ -44,10 +45,19 @@ export function CopyableValue({ value, label, gloss, fullValueForCopy, truncate 
         <button
           type="button"
           onClick={handleCopy}
-          className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-4 rounded-[4px] border border-edge-ctl px-8 text-[14px] font-bold text-brand hover:bg-surface"
+          className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-4 rounded-[4px] border px-8 text-[14px] font-bold transition-colors duration-150 ${
+            copied ? 'border-ok bg-ok-bg text-ok' : 'border-edge-ctl text-brand hover:bg-surface'
+          }`}
           aria-label={`Copy ${label || 'value'}`}
         >
-          {copied ? 'Copied' : <CopyIcon className="h-16 w-16" />}
+          {copied ? (
+            <>
+              <CheckIcon className="animate-scale-in h-16 w-16" />
+              Copied
+            </>
+          ) : (
+            <CopyIcon className="h-16 w-16" />
+          )}
         </button>
       </div>
       {gloss ? <p className="mt-4 text-[14px] leading-[20px] text-faint">{gloss}</p> : null}

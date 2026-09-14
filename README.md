@@ -82,6 +82,8 @@ The API listens on `:4000`, the web app on `:5173`.
 
 See `.env.example` for the full list with comments. The two adapters that need real third-party accounts — **Clerk** (identity) and **Pinata** (IPFS pinning) — have built-in **dev-mode fallbacks**: leave `CLERK_SECRET_KEY`/`PINATA_JWT` blank and the API logs a loud one-time warning and switches to a local stand-in (an unsigned `dev:...` bearer token format, and content-addressed local-disk storage, respectively) so the whole issuance → anchor → verify → revoke flow works without either account. Fill them in with real values to exercise the real, fully-implemented paths.
 
+**Want real sign-in/sign-up with 2FA, OAuth, and email verification?** That's a Clerk Dashboard configuration, not new code — see [docs/CLERK_SETUP.md](docs/CLERK_SETUP.md).
+
 `CUSTODIAN_PRIVATE_KEY` in `.env` (and in `docker-compose.yml`) is Hardhat's well-known, publicly-documented default test account — funded with 10000 test ETH on any local Hardhat node, worthless anywhere else. Never reuse a well-known test key for a real deployment.
 
 ## Testing
@@ -111,7 +113,9 @@ docker-compose.yml
 
 ## Scope decisions for this release
 
-The SRS (v2.0/v2.1) explicitly defines only two authenticated roles — **institution** and **student** — plus an anonymous public verifier, and lists an admin console, mandatory 2FA, and bulk/batch CSV issuance as **out of scope** for this release (the approved LLD/SDD/Technical Design confirm this baseline). An early Figma exploration sketched all three as future ideas; they are **not** built here, by design, not by oversight. Institution onboarding for this release is a scripted, audited, out-of-band step (see `db/seeds/seed.js` for the shape of an institution + staff account) rather than a self-service admin UI.
+The SRS (v2.0/v2.1) explicitly defines only two authenticated roles — **institution** and **student** — plus an anonymous public verifier, and lists an admin console, mandatory 2FA, and bulk/batch CSV issuance as **out of scope** for this release (the approved LLD/SDD/Technical Design confirm this baseline). An early Figma exploration sketched a separate admin role as a future idea; it is **not** built here. TOTP 2FA, OAuth sign-in, and mandatory email verification *are* implemented, via Clerk's hosted auth UI — see [docs/CLERK_SETUP.md](docs/CLERK_SETUP.md).
+
+Sign-up is self-service for both roles: a new account picks "student" or "institution" at `/choose-role` right after registering. Choosing "institution" is **auto-approved** — anyone can currently claim to be an institution and immediately get certificate-issuance rights. That's an acceptable tradeoff for local testing/demo use (this is what's currently deployed), but a real public deployment should gate new institution accounts behind manual review before activation instead (see docs/CLERK_SETUP.md §7). `db/seeds/seed.js` still shows the shape of a scripted/audited institution + staff account, which remains the safer provisioning path for a production deployment.
 
 ## Project timeline (Form 1/2, WBS)
 

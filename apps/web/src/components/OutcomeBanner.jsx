@@ -28,9 +28,13 @@ export function OutcomeBanner({ result }) {
   const Icon = config.Icon;
 
   return (
-    <div className={`rounded-[6px] border border-edge p-24 ${tone.bg}`}>
-      <div className="flex items-center gap-16">
-        <Icon className={`h-32 w-32 shrink-0 ${tone.text}`} />
+    <div className={`rounded-[16px] border border-edge p-24 shadow-sm ${tone.bg}`}>
+      <div className="flex flex-col items-center gap-16 text-center sm:flex-row sm:text-left">
+        <span
+          className={`animate-scale-in flex h-64 w-64 shrink-0 items-center justify-center rounded-full bg-paper ${tone.text}`}
+        >
+          <Icon className="h-32 w-32" />
+        </span>
         <p className={`text-[24px] font-bold leading-[32px] tracking-[0.4px] ${tone.text}`}>
           {config.word}
         </p>
@@ -49,7 +53,7 @@ export function OutcomeBanner({ result }) {
       ) : null}
 
       {degraded ? (
-        <div className="mt-16 flex items-start gap-12 rounded-[4px] border border-edge bg-paper p-12">
+        <div className="mt-16 flex items-start gap-12 rounded-[8px] border border-edge bg-paper p-12">
           <ClockIcon className="mt-2 h-20 w-20 shrink-0 text-neutral" />
           <div>
             <p className="text-[16px] font-bold leading-[24px] text-ink">

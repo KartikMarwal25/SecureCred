@@ -68,6 +68,8 @@ const toPublicView = (cert) => ({
   certificateType: cert.certificate_type,
   issueDate: cert.issue_date,
   status: cert.status,
+  holderName: cert.holder_name,
+  institutionName: cert.institution_name,
 });
 
 /**

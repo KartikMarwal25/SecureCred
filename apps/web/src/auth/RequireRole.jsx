@@ -21,6 +21,17 @@ export function RequireRole({ role, children }) {
     return <Navigate to={isDevAuthMode ? '/dev-login' : '/sign-in'} replace />;
   }
 
+  // An institution account with no institutionId has left (see
+  // SettingsPage.jsx's "Leave this institution" / POST /institutions/me/
+  // leave) but keeps its role_id — treat it the same as "no role" for
+  // routing, or they'd be waved into pages with nothing to actually scope
+  // their data to.
+  const isDetachedInstitution = auth.role === ROLE.INSTITUTION && !auth.institutionId;
+
+  if (!auth.role || isDetachedInstitution) {
+    return <Navigate to="/choose-role" replace />;
+  }
+
   if (auth.role !== role) {
     return <Navigate to={LANDING_BY_ROLE[auth.role] ?? '/verify'} replace />;
   }

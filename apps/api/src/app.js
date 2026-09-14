@@ -15,6 +15,7 @@ import { createCorsMiddleware } from './middleware/cors.mw.js';
 import { createSecurityHeadersMiddleware } from './middleware/security-headers.mw.js';
 import { requestId } from './middleware/request-id.mw.js';
 import { createErrorHandler } from './middleware/error-handler.mw.js';
+import { createAuthRouter } from './routes/auth.routes.js';
 import { createCertificatesRouter } from './routes/certificates.routes.js';
 import { createStudentsRouter } from './routes/students.routes.js';
 import { createInstitutionsRouter } from './routes/institutions.routes.js';
@@ -45,6 +46,16 @@ export const createApp = (deps) => {
   app.use(pinoHttp({ logger }));
 
   app.use(
+    '/api/v1/auth',
+    createAuthRouter({
+      requireAuth: deps.requireAuth,
+      userRepo: deps.userRepo,
+      institutionRepo: deps.repos?.institutionRepo,
+      institutionJoinRequestRepo: deps.repos?.institutionJoinRequestRepo,
+    }),
+  );
+
+  app.use(
     '/api/v1/certificates',
     createCertificatesRouter({
       issuanceService: deps.issuanceService,
@@ -72,6 +83,10 @@ export const createApp = (deps) => {
     '/api/v1/institutions',
     createInstitutionsRouter({
       verificationLogRepo: deps.repos?.verificationLogRepo,
+      institutionRepo: deps.repos?.institutionRepo,
+      institutionJoinRequestRepo: deps.repos?.institutionJoinRequestRepo,
+      userRepo: deps.userRepo,
+      auditRepo: deps.repos?.auditRepo,
       requireAuth: deps.requireAuth,
     }),
   );

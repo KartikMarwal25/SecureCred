@@ -29,12 +29,25 @@
   --neutral: #4a5768;
   --neutral-bg: #e7eaee;
 
-  /* The one shadow level permitted in the whole product, used only on the
-     revoke confirmation dialog. Derived from --ink, never a bare hex. */
+  /* Elevation scale. --shadow-dialog is kept for the revoke dialog; the rest
+     are the richer, marketing-site-grade elevation the 2026 visual refresh
+     introduced for cards, hover states, and hero panels. All derived from
+     --ink, never a bare hex. */
   --shadow-dialog: 0 12px 32px rgba(21, 49, 91, 0.28);
+  --elevation-xs: 0 1px 2px rgba(21, 49, 91, 0.06);
+  --elevation-sm: 0 2px 8px rgba(21, 49, 91, 0.08);
+  --elevation-md: 0 8px 24px rgba(21, 49, 91, 0.1);
+  --elevation-lg: 0 16px 40px rgba(21, 49, 91, 0.14);
+  --elevation-glow: 0 0 0 1px rgba(110, 231, 183, 0.4), 0 8px 24px rgba(110, 231, 183, 0.25);
 
   /* Overlay scrim behind the one modal dialog in the product, derived from --ink. */
   --scrim: rgba(21, 49, 91, 0.4);
+
+  /* Gradients for hero/CTA surfaces — built only from tokens already above. */
+  --gradient-hero: radial-gradient(ellipse 120% 80% at 50% -10%, #e3ecfb 0%, var(--surface) 55%);
+  --gradient-brand: linear-gradient(135deg, var(--ink) 0%, var(--brand) 100%);
+  --gradient-dark-panel: linear-gradient(135deg, #0b2242 0%, #15315b 55%, #1f4e79 100%);
+  --gradient-accent: linear-gradient(135deg, #6ee7b7 0%, #34c98f 100%);
 }
 
 @theme {
@@ -63,6 +76,18 @@
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  /*
+   * CRITICAL: this codebase's spacing scale (4, 8, 12, 16, 24, 32, 48 — see
+   * the design spec) is written as bare Tailwind numerics (`p-16`, `gap-24`,
+   * `mt-8`, ...) with the INTENT that the number is literal pixels. Tailwind
+   * v4's own default `--spacing` is `0.25rem` (4px), which would make every
+   * one of those classes render 4x too large (`p-16` -> 64px instead of
+   * 16px) — exactly the "everything looks oversized and empty" bug this
+   * override fixes project-wide in one line, without touching the ~40
+   * component/page files that already assume 1 unit = 1px.
+   */
+  --spacing: 1px;
+
   /* Exact breakpoints from the design spec (Tailwind v4's default `sm` is 640px). */
   --breakpoint-sm: 480px;
   --breakpoint-md: 768px;
@@ -71,6 +96,14 @@
 
   --radius-control: 4px;
   --radius-card: 6px;
+  --radius-panel: 16px;
+  --radius-hero: 24px;
+
+  --shadow-xs: var(--elevation-xs);
+  --shadow-sm: var(--elevation-sm);
+  --shadow-md: var(--elevation-md);
+  --shadow-lg: var(--elevation-lg);
+  --shadow-glow: var(--elevation-glow);
 }
 
 * {
@@ -111,4 +144,141 @@ body {
 :focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion. Entrance/scroll-reveal/hover animations for the 2026 visual
+ * refresh. Everything here respects prefers-reduced-motion (the whole block
+ * collapses to instant, final-state-only rendering for anyone who has asked
+ * for reduced motion — this is a hard requirement, not a nice-to-have).
+ * ------------------------------------------------------------------------ */
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(110, 231, 183, 0.55); }
+  70% { box-shadow: 0 0 0 12px rgba(110, 231, 183, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(110, 231, 183, 0); }
+}
+
+@keyframes draw-check {
+  from { stroke-dashoffset: 48; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-fade-in {
+  animation: fade-in 0.5s ease both;
+}
+.animate-scale-in {
+  animation: scale-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-float {
+  animation: float-y 5s ease-in-out infinite;
+}
+.animate-pulse-ring {
+  animation: pulse-ring 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.animate-spin-slow {
+  animation: spin-slow 12s linear infinite;
+}
+
+/* Stagger helper: apply alongside .animate-fade-in-up on a list of siblings,
+   each direct child picks up an increasing delay (up to 8 children). */
+.stagger-children > * {
+  animation-fill-mode: both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 80ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 160ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 240ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 320ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 400ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 480ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 560ms; }
+
+/* Reveal-on-scroll: JS (useInView) toggles this class on; until then the
+   element stays invisible-but-laid-out so there's no content jump. */
+.reveal {
+  opacity: 0;
+}
+.reveal.is-visible {
+  opacity: 1;
+}
+
+/* Skeleton shimmer, replacing the flat grey placeholder. */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--zebra) 25%, #f8fbff 50%, var(--zebra) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+.text-gradient-brand {
+  background-image: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bg-grid-pattern {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1;
+  }
 }

@@ -1,0 +1,80 @@
+name: CI
+
+# Runs on every push/PR. Matches the WBS "CI gates":
+#   gate 1 (Sprint 1) — repo builds, lints
+#   gates 2-5 (Sprint 2) — contract tests, API/worker unit tests, web build
+# One job per workspace so a failure in one (e.g. contracts) doesn't hide a
+# failure in another, and each is independently re-runnable.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, master]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lint:
+    name: Lint (gate 1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm install
+      - run: npm run lint
+
+  contracts:
+    name: Smart contract tests (gate 2)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install
+      - run: npm run compile
+      - run: npm test
+
+  api:
+    name: API unit tests (gate 3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm install
+      - run: npm run api:test
+
+  worker:
+    name: Worker unit tests (gate 4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm install
+      - run: npm run test --workspace=apps/worker
+
+  web:
+    name: Web build (gate 5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm install
+      - run: npm run web:build
