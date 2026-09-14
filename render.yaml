@@ -77,7 +77,16 @@ services:
         value: '80002'
       - key: CONTRACT_ADDRESS
         value: '0x98324B9941Cd0bce42767AC634BA835B7c02c421'
+      - key: CONFIRMATION_DEPTH
+        value: '3'
       - key: CUSTODIAN_PRIVATE_KEY
+        sync: false
+      # The worker re-runs the SAME issuance pipeline as the API to resume a
+      # stalled certificate/batch row (see issuanceService.js), which pins
+      # to Pinata — without this, a resumed pin would silently fall back to
+      # the API's dev-mode local-disk storage, writing to a CID nothing on
+      # real IPFS actually serves.
+      - key: PINATA_JWT
         sync: false
       - key: STALL_THRESHOLD_SEC
         value: '120'
