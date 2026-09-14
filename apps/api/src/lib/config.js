@@ -81,6 +81,13 @@ const envSchema = z.object({
   RATE_REVOCATION_PER_HOUR: z.coerce.number().int().positive().default(20),
 
   STALL_THRESHOLD_SEC: z.coerce.number().int().positive().default(120),
+
+  // Off by default: apps/worker runs the reconciler/event listener/batch
+  // resumer as its own separate process (docker-compose's `worker`
+  // service). Set to true only when there is no separate worker process at
+  // all (e.g. a single free-tier host that doesn't offer a background-
+  // worker service type) and this API process must run those jobs itself.
+  RUN_WORKER_INLINE: booleanEnv(false),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -132,6 +139,7 @@ export const config = Object.freeze({
   }),
 
   stallThresholdSec: env.STALL_THRESHOLD_SEC,
+  runWorkerInline: env.RUN_WORKER_INLINE,
 
   repoRoot: REPO_ROOT,
 });

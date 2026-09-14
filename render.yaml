@@ -1,5 +1,17 @@
-## Render Blueprint for SecureCred — creates the database, API, worker, and
-## static frontend in one "New Blueprint" pass from this repo.
+## Render Blueprint for SecureCred — creates the database, API, and static
+## frontend in one "New Blueprint" pass from this repo.
+##
+## Render's free plan does not offer a Background Worker service type at
+## all (paid-only), so there is no separate worker service here. Instead
+## RUN_WORKER_INLINE=true tells the API process to also run the
+## reconciler/event listener/batch resumer itself (see server.js) — the
+## exact same modules apps/worker/ runs standalone in docker-compose, not a
+## separate implementation. Tradeoff: Render's free web services sleep
+## after ~15 minutes with no incoming requests, and the inline worker sleeps
+## with it, resuming (with a ~30-60s cold start) on the next visit. Fine for
+## a demo/exhibition someone is actively clicking through; for something
+## meant to stay always-on, upgrade this service off the free plan and
+## split the worker back out as its own paid Background Worker service.
 ##
 ## After the first deploy, several env vars below (marked sync: false) need
 ## a value pasted into the Render dashboard once the real service URLs and
@@ -26,6 +38,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: RUN_WORKER_INLINE
+        value: 'true'
       - key: DATABASE_URL
         fromDatabase:
           name: securecred-db
@@ -55,39 +69,6 @@ services:
         sync: false
       - key: CONFIRMATION_DEPTH
         value: '3'
-
-  - type: worker
-    name: securecred-worker
-    runtime: docker
-    dockerfilePath: ./docker/worker.Dockerfile
-    dockerContext: .
-    plan: free
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: securecred-db
-          property: connectionString
-      - key: CHAIN_NETWORK
-        value: amoy
-      - key: RPC_URL
-        value: https://polygon-amoy-bor-rpc.publicnode.com
-      - key: CHAIN_ID
-        value: '80002'
-      - key: CONTRACT_ADDRESS
-        value: '0x98324B9941Cd0bce42767AC634BA835B7c02c421'
-      - key: CONFIRMATION_DEPTH
-        value: '3'
-      - key: CUSTODIAN_PRIVATE_KEY
-        sync: false
-      # The worker re-runs the SAME issuance pipeline as the API to resume a
-      # stalled certificate/batch row (see issuanceService.js), which pins
-      # to Pinata — without this, a resumed pin would silently fall back to
-      # the API's dev-mode local-disk storage, writing to a CID nothing on
-      # real IPFS actually serves.
-      - key: PINATA_JWT
-        sync: false
       - key: STALL_THRESHOLD_SEC
         value: '120'
       - key: RECONCILE_INTERVAL_SEC
